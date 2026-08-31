@@ -130,4 +130,86 @@ This project is currently under active development. Add an appropriate license d
 
 ## Note
 
-This README is intended to provide a strong starting point for the SIH project. As the implementation evolves, update sections such as architecture, API endpoints, dataset sources, deployment steps, and team details.
+This README is intended to provide a strong starting point for the SIH project. As the implementation evolves, update sectio# TerraSentinel
+
+TerraSentinel is a Smart India Hackathon (SIH) project focused on developing an AI-based early warning and landslide risk monitoring system for the North Eastern Region (NER) of India.
+
+## Project Overview
+
+The project aims to help disaster-management authorities, local administrations, and field officials monitor landslide-prone areas and identify locations where the risk of landslides is increasing.
+
+By combining historical landslide records, rainfall, terrain, soil, satellite and other geospatial data, TerraSentinel provides data-driven risk assessment, GIS-based visualization, early warnings, and actionable information for timely intervention.
+
+## Problem Statement
+
+Landslides are a major hazard in the North Eastern Region of India, where heavy rainfall, steep terrain, soil conditions, and other environmental factors can contribute to slope instability.
+
+There is a need for an intelligent and unified system that can:
+
+- Monitor environmental conditions related to landslide risk
+- Identify and forecast areas with increasing landslide risk
+- Visualize vulnerable zones using GIS
+- Identify potentially affected roads, villages, and critical infrastructure
+- Provide actionable information for disaster-management authorities
+- Support field-level reporting and timely response
+
+## Objectives
+
+- Build an AI/ML-based landslide risk prediction system
+- Integrate rainfall, terrain, soil, satellite and historical landslide data
+- Provide dynamic and location-based risk assessment
+- Visualize landslide risk through an interactive GIS dashboard
+- Identify potentially affected population and infrastructure
+- Support authorities in prioritizing high-risk areas
+- Enable geo-tagged field observations and reporting
+- Provide a scalable foundation for deployment across the NER
+
+## Key Features
+
+- AI/ML-based landslide risk prediction
+- Historical landslide analysis and backtesting
+- Rainfall and environmental condition monitoring
+- Terrain, slope and soil analysis
+- Satellite and remote-sensing data integration
+- GIS-based landslide risk visualization
+- Dynamic risk scoring and risk trends
+- Explainable risk factors
+- Impact analysis for roads, villages and critical infrastructure
+- Risk-based response prioritization
+- Early warning and alert generation
+- Geo-tagged field reports and observations
+- Offline field reporting with synchronization
+- Scalable architecture for NER-wide deployment
+
+## Technology Stack
+
+This project can be implemented using a modern geospatial and AI/ML stack such as:
+
+- Frontend: React / Next.js, HTML, CSS, JavaScript
+- Backend: Python / FastAPI
+- Machine Learning: Python, Scikit-learn, XGBoost / LightGBM
+- Data Processing: Python, Pandas, NumPy
+- Geospatial Processing: GeoPandas, Rasterio, GDAL
+- GIS & Mapping: Leaflet / Mapbox / OpenStreetMap
+- Database: PostgreSQL / PostGIS
+- Satellite & Environmental Data: GPM / IMERG, Sentinel-2, DEM and other public geospatial datasets
+- Visualization: Recharts / Chart.js / D3
+- Deployment: Docker / Vercel / AWS / Azure
+
+## Suggested Project Structure
+
+```text
+TerraSentinel/
+├── frontend/
+├── backend/
+├── ml/
+├── gis/
+├── data/
+├── field-app/
+├── scripts/
+├── tests/
+├── docs/
+├── README.md
+├── requirements.txt
+├── package.json
+└── .gitignore
