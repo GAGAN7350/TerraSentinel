@@ -1,0 +1,5 @@
+
+# Ignore intermediate data processing files
+data/processed/*
+!data/processed/gsi_ner_landslides.csv
+!data/processed/gsi_ner_landslides_complete.csv

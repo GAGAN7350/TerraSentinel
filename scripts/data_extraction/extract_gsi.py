@@ -375,7 +375,7 @@ print(NER_OUTPUT)
 # ============================================================
 
 files_to_push = [
-    "extract_gsi.py",
+    "scripts/data_extraction/extract_gsi.py",
     str(NER_OUTPUT),
     str(RAW_OUTPUT),
 ]
