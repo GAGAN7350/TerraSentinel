@@ -1,9 +1,6 @@
-"""
-Risk prediction service.
-Business logic for storing and querying ML predictions.
-The ML inference pipeline is NOT implemented here — this service
-provides the interface the ML worker will write to.
-"""
+"""Risk prediction service — storage contract for future ML service."""
+
+from __future__ import annotations
 
 import uuid
 
@@ -21,20 +18,20 @@ class RiskService:
         self.repo = RiskRepository(session)
 
     async def create(self, data: RiskPredictionCreate) -> RiskPrediction:
-        """
-        Persist a risk prediction produced by the ML service.
-        In the future this will also trigger alert generation via a background task.
-        """
-        prediction = RiskPrediction(
-            geometry=make_point_wkt(data.longitude, data.latitude),
+        obj = RiskPrediction(
+            prediction_time=data.prediction_time,
+            valid_until=data.valid_until,
+            latitude=data.latitude,
+            longitude=data.longitude,
+            geom=make_point_wkt(data.longitude, data.latitude),
             risk_score=data.risk_score,
             risk_level=data.risk_level,
             confidence=data.confidence,
+            trend=data.trend,
             model_version=data.model_version,
-            prediction_time=data.prediction_time,
-            contributing_factors=data.contributing_factors,
+            explanation=data.explanation,
         )
-        return await self.repo.create(prediction)
+        return await self.repo.create(obj)
 
     async def get(self, prediction_id: uuid.UUID) -> RiskPrediction:
         obj = await self.repo.get(prediction_id)
@@ -42,49 +39,18 @@ class RiskService:
             raise NotFoundError(f"Risk prediction '{prediction_id}' not found.")
         return obj
 
-    async def list(
-        self, skip: int = 0, limit: int = 50
-    ) -> tuple[list[RiskPrediction], int]:
-        items = await self.repo.list(skip=skip, limit=limit)
+    async def list(self, page: int = 1, page_size: int = 50) -> tuple[list[RiskPrediction], int]:
+        skip = (page - 1) * page_size
+        items = await self.repo.list(skip=skip, limit=page_size)
         total = await self.repo.count()
         return items, total
 
     async def find_near(
-        self,
-        latitude: float,
-        longitude: float,
-        radius_meters: float = 25_000,
+        self, latitude: float, longitude: float, radius_km: float
     ) -> list[RiskPrediction]:
-        return await self.repo.find_near(latitude, longitude, radius_meters)
+        return await self.repo.find_near(latitude, longitude, radius_km)
 
     async def find_by_risk_level(
-        self,
-        risk_level: RiskLevel,
-        skip: int = 0,
-        limit: int = 50,
+        self, risk_level: RiskLevel, page: int = 1, page_size: int = 50
     ) -> list[RiskPrediction]:
-        return await self.repo.find_by_risk_level(risk_level, skip=skip, limit=limit)
-
-    # ------------------------------------------------------------------
-    # Placeholder: ML inference interface
-    # ------------------------------------------------------------------
-
-    async def trigger_prediction(
-        self,
-        latitude: float,
-        longitude: float,
-    ) -> dict:
-        """
-        Placeholder for triggering an ML prediction at a given location.
-        In production this will dispatch a task to the ML inference service
-        (via Celery/Kafka) and return a job reference.
-        """
-        return {
-            "status": "not_implemented",
-            "message": (
-                "ML inference service not yet connected. "
-                "POST to /api/v1/risk to store pre-computed predictions."
-            ),
-            "latitude": latitude,
-            "longitude": longitude,
-        }
+        return await self.repo.find_by_risk_level(risk_level, page=page, page_size=page_size)
