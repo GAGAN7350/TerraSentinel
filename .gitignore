@@ -5,7 +5,12 @@ stages/
 .env
 __pycache__/
 .venv/
+
 # Data and PDF exclusions
 data/raw/
 *.pdf
 
+# Ignore intermediate data processing files
+data/processed/*
+!data/processed/gsi_ner_landslides.csv
+!data/processed/gsi_ner_landslides_complete.csv
