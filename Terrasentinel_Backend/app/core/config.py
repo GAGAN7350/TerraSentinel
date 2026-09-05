@@ -3,6 +3,9 @@ Application configuration loaded from environment variables.
 Uses pydantic-settings for validation and .env file support.
 """
 
+from __future__ import annotations
+
+import json
 from functools import lru_cache
 from typing import Literal
 
@@ -36,11 +39,22 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     # CORS
     # ------------------------------------------------------------------ #
-    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:8080"]
+    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v: str | list) -> list[str]:
+        if isinstance(v, list):
+            return v
+        v = v.strip()
+        if v.startswith("["):
+            return json.loads(v)
+        return [o.strip() for o in v.split(",") if o.strip()]
 
     # ------------------------------------------------------------------ #
-    # Database
+    # Database — supports both DATABASE_URL and split vars
     # ------------------------------------------------------------------ #
+    DATABASE_URL: str | None = None        # full async DSN (optional override)
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_USER: str = "terrasentinel"
@@ -48,8 +62,13 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = "terrasentinel"
 
     @property
-    def database_url(self) -> str:
+    def async_database_url(self) -> str:
         """Async-compatible PostgreSQL DSN (asyncpg driver)."""
+        if self.DATABASE_URL:
+            # Replace sync driver prefix if caller provided a psycopg2 URL
+            return self.DATABASE_URL.replace(
+                "postgresql://", "postgresql+asyncpg://"
+            ).replace("postgresql+psycopg2://", "postgresql+asyncpg://")
         return (
             f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
@@ -58,29 +77,26 @@ class Settings(BaseSettings):
     @property
     def sync_database_url(self) -> str:
         """Sync PostgreSQL DSN used by Alembic."""
+        if self.DATABASE_URL:
+            return self.DATABASE_URL.replace(
+                "postgresql+asyncpg://", "postgresql+psycopg2://"
+            ).replace("postgresql://", "postgresql+psycopg2://")
         return (
             f"postgresql+psycopg2://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         )
 
     # ------------------------------------------------------------------ #
+    # Security
+    # ------------------------------------------------------------------ #
+    SECRET_KEY: str = "dev-secret-key-replace-in-production"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    ALGORITHM: str = "HS256"
+
+    # ------------------------------------------------------------------ #
     # Future placeholders (not used yet)
     # ------------------------------------------------------------------ #
     REDIS_URL: str = "redis://localhost:6379/0"
-    SECRET_KEY: str = "change-me-in-production"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
-
-    @field_validator("CORS_ORIGINS", mode="before")
-    @classmethod
-    def parse_cors_origins(cls, v: str | list) -> list[str]:
-        if isinstance(v, str):
-            # Handle JSON array string or comma-separated string
-            v = v.strip()
-            if v.startswith("["):
-                import json
-                return json.loads(v)
-            return [origin.strip() for origin in v.split(",") if origin.strip()]
-        return v
 
 
 @lru_cache
