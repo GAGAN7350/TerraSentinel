@@ -3,6 +3,8 @@ Generic async repository providing standard CRUD operations.
 Domain-specific repositories extend this class and add specialised queries.
 """
 
+from __future__ import annotations
+
 from typing import Any, Generic, TypeVar
 from uuid import UUID
 

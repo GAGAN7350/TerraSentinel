@@ -1,5 +1,7 @@
 """Field report business logic service."""
 
+from __future__ import annotations
+
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,17 +17,20 @@ class FieldReportService:
     def __init__(self, session: AsyncSession) -> None:
         self.repo = FieldReportRepository(session)
 
-    async def create(self, data: FieldReportCreate) -> FieldReport:
-        report = FieldReport(
-            user_id=data.user_id,
+    async def create(self, data: FieldReportCreate, user_id: uuid.UUID) -> FieldReport:
+        obj = FieldReport(
+            submitted_by=user_id,
             latitude=data.latitude,
             longitude=data.longitude,
-            geometry=make_point_wkt(data.longitude, data.latitude),
+            geom=make_point_wkt(data.longitude, data.latitude),
+            state=data.state,
+            district=data.district,
+            report_type=data.report_type,
+            severity=data.severity,
             description=data.description,
-            media_url=data.media_url,
-            report_time=data.report_time,
+            observed_at=data.observed_at,
         )
-        return await self.repo.create(report)
+        return await self.repo.create(obj)
 
     async def get(self, report_id: uuid.UUID) -> FieldReport:
         obj = await self.repo.get(report_id)
@@ -33,19 +38,19 @@ class FieldReportService:
             raise NotFoundError(f"Field report '{report_id}' not found.")
         return obj
 
-    async def list(
-        self, skip: int = 0, limit: int = 50
+    async def list_filtered(
+        self,
+        submitted_by: uuid.UUID | None = None,
+        page: int = 1,
+        page_size: int = 50,
     ) -> tuple[list[FieldReport], int]:
-        items = await self.repo.list(skip=skip, limit=limit)
-        total = await self.repo.count()
-        return items, total
+        return await self.repo.list_filtered(
+            submitted_by=submitted_by, page=page, page_size=page_size
+        )
 
-    async def update(
-        self, report_id: uuid.UUID, data: FieldReportUpdate
-    ) -> FieldReport:
+    async def update(self, report_id: uuid.UUID, data: FieldReportUpdate) -> FieldReport:
         obj = await self.get(report_id)
-        update_data = data.model_dump(exclude_unset=True)
-        return await self.repo.update(obj, update_data)
+        return await self.repo.update(obj, data.model_dump(exclude_unset=True))
 
     async def delete(self, report_id: uuid.UUID) -> None:
         obj = await self.get(report_id)

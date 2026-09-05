@@ -1,12 +1,13 @@
 """
-Rainfall observation model.
-Stores point rainfall measurements from gauges, satellites, or numerical models.
+Rainfall observation model — supports IMD, IMERG, WRF and future providers.
 """
+
+from __future__ import annotations
 
 from datetime import datetime
 
 from geoalchemy2 import Geometry
-from sqlalchemy import DateTime, Float, Index, String
+from sqlalchemy import DateTime, Float, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -17,33 +18,36 @@ class RainfallObservation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "rainfall_observations"
 
-    # Observation time
-    timestamp: Mapped[datetime] = mapped_column(
+    # Data source: "IMD_GAUGE", "GPM_IMERG", "WRF_MODEL", etc.
+    source: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+
+    # Observation timestamp (UTC)
+    observation_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )
 
-    # Coordinates (duplicate of geometry for convenience)
+    # Coordinates
     latitude: Mapped[float] = mapped_column(Float, nullable=False)
     longitude: Mapped[float] = mapped_column(Float, nullable=False)
 
-    # Rainfall amount in millimetres
-    rainfall_mm: Mapped[float] = mapped_column(Float, nullable=False)
-
-    # Origin of data: IMD gauge, GPM satellite, WRF model, etc.
-    source: Mapped[str | None] = mapped_column(String(256), nullable=True)
-
     # PostGIS Point geometry
-    geometry: Mapped[object] = mapped_column(
-        Geometry(geometry_type="POINT", srid=4326),
-        nullable=False,
+    geom: Mapped[object] = mapped_column(
+        Geometry(geometry_type="POINT", srid=4326), nullable=False
     )
 
+    # Measurement
+    rainfall_mm: Mapped[float] = mapped_column(Float, nullable=False)
+    duration_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Grid cell reference (for satellite/model data)
+    cell_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
     __table_args__ = (
-        Index("ix_rainfall_geometry", "geometry", postgresql_using="gist"),
+        Index("ix_rainfall_geom", "geom", postgresql_using="gist"),
     )
 
     def __repr__(self) -> str:
         return (
             f"<RainfallObservation id={self.id} "
-            f"ts={self.timestamp} rainfall_mm={self.rainfall_mm}>"
+            f"time={self.observation_time} mm={self.rainfall_mm}>"
         )

@@ -1,45 +1,45 @@
 """Pydantic schemas for Field Report endpoints."""
 
+from __future__ import annotations
+
 import uuid
 from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.models.field_report import ReportStatus
+from app.models.field_report import ReportSeverity, ReportType
 from app.schemas.common import GeoJSONPoint, Latitude, Longitude
 
 
 class FieldReportCreate(BaseModel):
-    """Payload submitted by a field officer."""
-
-    user_id: uuid.UUID | None = None
     latitude: Latitude
     longitude: Longitude
+    state: str | None = None
+    district: str | None = None
+    report_type: ReportType = ReportType.OTHER
+    severity: ReportSeverity = ReportSeverity.LOW
     description: str | None = None
-    media_url: str | None = Field(default=None, max_length=2048)
-    report_time: datetime
+    observed_at: datetime
 
 
 class FieldReportUpdate(BaseModel):
-    """Fields that can be updated on an existing field report."""
-
     description: str | None = None
-    media_url: str | None = None
-    status: ReportStatus | None = None
+    report_type: ReportType | None = None
+    severity: ReportSeverity | None = None
 
 
 class FieldReportResponse(BaseModel):
-    """Field report representation returned by the API."""
-
     id: uuid.UUID
-    user_id: uuid.UUID | None
+    submitted_by: uuid.UUID | None
     latitude: float
     longitude: float
     geometry: GeoJSONPoint | None = None
+    state: str | None
+    district: str | None
+    report_type: ReportType
+    severity: ReportSeverity
     description: str | None
-    media_url: str | None
-    report_time: datetime
-    status: ReportStatus
+    observed_at: datetime
     created_at: datetime
     updated_at: datetime
 

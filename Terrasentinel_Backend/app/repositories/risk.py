@@ -1,5 +1,7 @@
 """Repository for RiskPrediction model."""
 
+from __future__ import annotations
+
 from geoalchemy2.functions import ST_DWithin, ST_MakePoint, ST_SetSRID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,33 +18,26 @@ class RiskRepository(BaseRepository[RiskPrediction]):
         self,
         latitude: float,
         longitude: float,
-        radius_meters: float = 25_000,
+        radius_km: float = 25.0,
         limit: int = 50,
     ) -> list[RiskPrediction]:
-        """Return predictions within *radius_meters* of the given coordinate."""
         point = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)
         stmt = (
             select(RiskPrediction)
-            .where(ST_DWithin(RiskPrediction.geometry, point, radius_meters))
+            .where(ST_DWithin(RiskPrediction.geom, point, radius_km * 1000))
             .order_by(RiskPrediction.prediction_time.desc())
             .limit(limit)
         )
-        result = await self.session.execute(stmt)
-        return list(result.scalars().all())
+        return list((await self.session.execute(stmt)).scalars().all())
 
     async def find_by_risk_level(
-        self,
-        risk_level: RiskLevel,
-        skip: int = 0,
-        limit: int = 50,
+        self, risk_level: RiskLevel, page: int = 1, page_size: int = 50
     ) -> list[RiskPrediction]:
-        """Return predictions filtered by risk level."""
         stmt = (
             select(RiskPrediction)
             .where(RiskPrediction.risk_level == risk_level)
             .order_by(RiskPrediction.prediction_time.desc())
-            .offset(skip)
-            .limit(limit)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
         )
-        result = await self.session.execute(stmt)
-        return list(result.scalars().all())
+        return list((await self.session.execute(stmt)).scalars().all())

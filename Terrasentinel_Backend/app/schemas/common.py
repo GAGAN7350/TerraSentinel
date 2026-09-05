@@ -1,46 +1,43 @@
-"""
-Shared schema utilities and types used across the application.
-"""
+"""Shared schema types and response wrappers per spec."""
 
-from typing import Annotated
+from __future__ import annotations
+
+from typing import Annotated, Generic, TypeVar
 
 from pydantic import BaseModel, Field
 
-
-# ------------------------------------------------------------------ #
 # Validated coordinate types
-# ------------------------------------------------------------------ #
-
 Latitude = Annotated[float, Field(ge=-90.0, le=90.0, description="WGS-84 latitude")]
 Longitude = Annotated[float, Field(ge=-180.0, le=180.0, description="WGS-84 longitude")]
 
+T = TypeVar("T")
 
-# ------------------------------------------------------------------ #
-# GeoJSON Point helper
-# ------------------------------------------------------------------ #
 
 class GeoJSONPoint(BaseModel):
-    """Minimal GeoJSON Point geometry for API responses."""
-
+    """Minimal GeoJSON Point geometry."""
     type: str = "Point"
-    coordinates: list[float]  # [longitude, latitude]
+    coordinates: list[float]  # [longitude, latitude] per GeoJSON spec
 
 
-# ------------------------------------------------------------------ #
-# Pagination
-# ------------------------------------------------------------------ #
-
-class PaginationParams(BaseModel):
-    """Common pagination query parameters."""
-
-    skip: int = Field(default=0, ge=0, description="Number of records to skip")
-    limit: int = Field(default=50, ge=1, le=500, description="Maximum records to return")
+class GeoJSONFeature(BaseModel):
+    """GeoJSON Feature wrapping a single record."""
+    type: str = "Feature"
+    geometry: GeoJSONPoint | None
+    properties: dict
 
 
-class PaginatedResponse(BaseModel):
-    """Generic wrapper for paginated list responses."""
+class GeoJSONFeatureCollection(BaseModel):
+    """GeoJSON FeatureCollection for map-friendly responses."""
+    type: str = "FeatureCollection"
+    features: list[GeoJSONFeature]
 
+
+class PaginatedResponse(BaseModel, Generic[T]):
+    """
+    Standard paginated list response per spec:
+    { "items": [], "page": 1, "page_size": 50, "total": 0 }
+    """
+    items: list[T]
+    page: int
+    page_size: int
     total: int
-    skip: int
-    limit: int
-    items: list  # overridden in concrete response types

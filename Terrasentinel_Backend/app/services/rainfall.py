@@ -1,5 +1,7 @@
 """Rainfall observation business logic service."""
 
+from __future__ import annotations
+
 import uuid
 from datetime import datetime
 
@@ -17,15 +19,17 @@ class RainfallService:
         self.repo = RainfallRepository(session)
 
     async def create(self, data: RainfallCreate) -> RainfallObservation:
-        obs = RainfallObservation(
-            timestamp=data.timestamp,
+        obj = RainfallObservation(
+            source=data.source,
+            observation_time=data.observation_time,
             latitude=data.latitude,
             longitude=data.longitude,
+            geom=make_point_wkt(data.longitude, data.latitude),
             rainfall_mm=data.rainfall_mm,
-            source=data.source,
-            geometry=make_point_wkt(data.longitude, data.latitude),
+            duration_minutes=data.duration_minutes,
+            cell_id=data.cell_id,
         )
-        return await self.repo.create(obs)
+        return await self.repo.create(obj)
 
     async def get(self, obs_id: uuid.UUID) -> RainfallObservation:
         obj = await self.repo.get(obs_id)
@@ -33,37 +37,31 @@ class RainfallService:
             raise NotFoundError(f"Rainfall observation '{obs_id}' not found.")
         return obj
 
-    async def list(
-        self, skip: int = 0, limit: int = 50
-    ) -> tuple[list[RainfallObservation], int]:
-        items = await self.repo.list(skip=skip, limit=limit)
+    async def list(self, page: int = 1, page_size: int = 50) -> tuple[list[RainfallObservation], int]:
+        skip = (page - 1) * page_size
+        items = await self.repo.list(skip=skip, limit=page_size)
         total = await self.repo.count()
         return items, total
 
-    async def update(
-        self, obs_id: uuid.UUID, data: RainfallUpdate
-    ) -> RainfallObservation:
+    async def update(self, obs_id: uuid.UUID, data: RainfallUpdate) -> RainfallObservation:
         obj = await self.get(obs_id)
-        update_data = data.model_dump(exclude_unset=True)
-        return await self.repo.update(obj, update_data)
+        return await self.repo.update(obj, data.model_dump(exclude_unset=True))
 
     async def delete(self, obs_id: uuid.UUID) -> None:
         obj = await self.get(obs_id)
         await self.repo.delete(obj)
 
     async def find_near(
-        self,
-        latitude: float,
-        longitude: float,
-        radius_meters: float = 25_000,
+        self, latitude: float, longitude: float, radius_km: float
     ) -> list[RainfallObservation]:
-        return await self.repo.find_near(latitude, longitude, radius_meters)
+        return await self.repo.find_near(latitude, longitude, radius_km)
 
     async def find_in_time_range(
         self,
         start: datetime,
         end: datetime,
-        skip: int = 0,
-        limit: int = 200,
+        source: str | None = None,
+        page: int = 1,
+        page_size: int = 200,
     ) -> list[RainfallObservation]:
-        return await self.repo.find_in_time_range(start, end, skip=skip, limit=limit)
+        return await self.repo.find_in_time_range(start, end, source=source, page=page, page_size=page_size)
