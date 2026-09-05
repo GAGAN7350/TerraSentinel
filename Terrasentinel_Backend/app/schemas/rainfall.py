@@ -1,5 +1,7 @@
 """Pydantic schemas for Rainfall Observation endpoints."""
 
+from __future__ import annotations
+
 import uuid
 from datetime import datetime
 
@@ -9,31 +11,29 @@ from app.schemas.common import GeoJSONPoint, Latitude, Longitude
 
 
 class RainfallCreate(BaseModel):
-    """Payload required to record a new rainfall observation."""
-
-    timestamp: datetime
+    source: str | None = Field(default=None, max_length=128)
+    observation_time: datetime
     latitude: Latitude
     longitude: Longitude
-    rainfall_mm: float = Field(..., ge=0.0, description="Rainfall amount in millimetres")
-    source: str | None = Field(default=None, max_length=256)
+    rainfall_mm: float = Field(..., ge=0.0)
+    duration_minutes: int | None = Field(default=None, ge=0)
+    cell_id: str | None = None
 
 
 class RainfallUpdate(BaseModel):
-    """Mutable fields of a rainfall observation."""
-
     rainfall_mm: float | None = Field(default=None, ge=0.0)
     source: str | None = None
 
 
 class RainfallResponse(BaseModel):
-    """Rainfall observation representation returned by the API."""
-
     id: uuid.UUID
-    timestamp: datetime
+    source: str | None
+    observation_time: datetime
     latitude: float
     longitude: float
     rainfall_mm: float
-    source: str | None
+    duration_minutes: int | None
+    cell_id: str | None
     geometry: GeoJSONPoint | None = None
     created_at: datetime
     updated_at: datetime
