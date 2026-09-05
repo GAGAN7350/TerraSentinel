@@ -30,3 +30,7 @@ alembic/versions/*.py
 
 # Docker
 *.log
+
+# Internal specifications
+stages/
+

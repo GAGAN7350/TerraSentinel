@@ -31,8 +31,8 @@ def _enrich(obj) -> FieldReportResponse:
 @router.post("/", response_model=FieldReportResponse, status_code=status.HTTP_201_CREATED)
 async def create_report(
     data: FieldReportCreate,
-    svc: FieldReportService = Depends(_svc),
     current_user: User = Depends(get_current_user),
+    svc: FieldReportService = Depends(_svc),
 ) -> FieldReportResponse:
     """Submit a field observation. Requires authentication."""
     return _enrich(await svc.create(data, user_id=current_user.id))
@@ -42,8 +42,8 @@ async def create_report(
 async def list_reports(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=500),
-    svc: FieldReportService = Depends(_svc),
     _: User = Depends(get_current_user),
+    svc: FieldReportService = Depends(_svc),
 ) -> PaginatedResponse[FieldReportResponse]:
     items, total = await svc.list_filtered(page=page, page_size=page_size)
     return PaginatedResponse(
@@ -55,8 +55,8 @@ async def list_reports(
 @router.get("/{report_id}", response_model=FieldReportResponse)
 async def get_report(
     report_id: uuid.UUID,
-    svc: FieldReportService = Depends(_svc),
     _: User = Depends(get_current_user),
+    svc: FieldReportService = Depends(_svc),
 ) -> FieldReportResponse:
     return _enrich(await svc.get(report_id))
 
@@ -65,8 +65,8 @@ async def get_report(
 async def update_report(
     report_id: uuid.UUID,
     data: FieldReportUpdate,
-    svc: FieldReportService = Depends(_svc),
     _: User = Depends(get_current_user),
+    svc: FieldReportService = Depends(_svc),
 ) -> FieldReportResponse:
     return _enrich(await svc.update(report_id, data))
 
@@ -74,8 +74,8 @@ async def update_report(
 @router.delete("/{report_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
 async def delete_report(
     report_id: uuid.UUID,
-    svc: FieldReportService = Depends(_svc),
     _: User = Depends(get_current_user),
+    svc: FieldReportService = Depends(_svc),
 ) -> Response:
     await svc.delete(report_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -1,0 +1,11 @@
+# Internal specifications and stage guides
+stages/
+**/stages/
+*.env
+.env
+__pycache__/
+.venv/
+# Data and PDF exclusions
+data/raw/
+*.pdf
+
