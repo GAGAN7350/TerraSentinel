@@ -1,10 +1,10 @@
 """
-Pytest fixtures shared across the test suite.
-
-The test client uses an in-process ASGI transport (httpx) so no
-network is required. The database tests use a real PostgreSQL instance
-(started via Docker Compose) — they are skipped if the DB is unavailable.
+Shared pytest fixtures.
+The AsyncClient uses in-process ASGI transport — no network required.
+DB-dependent tests will fail gracefully (500/503) without a live DB.
 """
+
+from __future__ import annotations
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -14,7 +14,7 @@ from app.main import app
 
 @pytest.fixture
 async def client() -> AsyncClient:
-    """Async HTTP test client wired to the FastAPI app."""
+    """Async HTTP client wired to the FastAPI ASGI app."""
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",

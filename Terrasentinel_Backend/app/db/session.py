@@ -53,26 +53,41 @@ AsyncSessionLocal = async_sessionmaker(
 
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency that yields an AsyncSession per request."""
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
+    try:
+        async with AsyncSessionLocal() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                try:
+                    await session.rollback()
+                except Exception:
+                    pass
+                raise
+    except (OSError, ConnectionRefusedError, Exception) as exc:
+        from app.core.exceptions import DatabaseError, TerraSentinelError
+        if isinstance(exc, TerraSentinelError):
             raise
-        finally:
-            await session.close()
+        raise DatabaseError("Database connection failed. Ensure PostgreSQL/PostGIS is running.") from exc
 
 
 @asynccontextmanager
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """Async context manager for use outside of FastAPI dependency injection."""
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
+    try:
+        async with AsyncSessionLocal() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                try:
+                    await session.rollback()
+                except Exception:
+                    pass
+                raise
+    except (OSError, ConnectionRefusedError, Exception) as exc:
+        from app.core.exceptions import DatabaseError, TerraSentinelError
+        if isinstance(exc, TerraSentinelError):
             raise
-        finally:
-            await session.close()
+        raise DatabaseError("Database connection failed. Ensure PostgreSQL/PostGIS is running.") from exc
+

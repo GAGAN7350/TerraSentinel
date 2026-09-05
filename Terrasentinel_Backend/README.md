@@ -189,70 +189,75 @@ uvicorn app.main:app --reload --port 8000
 
 ---
 
-## API Endpoints
+## API Endpoints (Phase 1 & Phase 2 Implemented)
 
 Base URL: `http://localhost:8000/api/v1`
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/health` | Service and database health check |
-| **Users** | | |
-| POST | `/users/` | Create a user |
-| GET | `/users/` | List users (paginated) |
-| GET | `/users/{id}` | Get user by ID |
-| PATCH | `/users/{id}` | Update user |
-| DELETE | `/users/{id}` | Delete user |
+| GET | `/health` | Service health check (returns status, version, app name) |
+| **Authentication & Users** | | |
+| POST | `/auth/register` | Register new user account (ADMIN / OFFICER) |
+| POST | `/auth/login` | Login with credentials to obtain OAuth2 JWT token |
+| GET | `/auth/me` | Retrieve profile of authenticated user |
+| GET | `/users/` | List users (paginated, requires token) |
+| GET | `/users/{id}` | Get user by ID (requires token) |
+| PATCH | `/users/{id}` | Update user profile (requires token) |
 | **Landslides** | | |
-| POST | `/landslides/` | Record a landslide event |
-| GET | `/landslides/` | List events (paginated) |
-| GET | `/landslides/near?lat=&lon=&radius_meters=` | Proximity search |
-| GET | `/landslides/bbox?min_lon=&min_lat=&max_lon=&max_lat=` | Bounding box query |
-| GET | `/landslides/{id}` | Get event by ID |
-| PATCH | `/landslides/{id}` | Update event |
-| DELETE | `/landslides/{id}` | Delete event |
-| **Rainfall** | | |
-| POST | `/rainfall/` | Record an observation |
-| GET | `/rainfall/` | List observations (paginated) |
-| GET | `/rainfall/near?lat=&lon=&radius_meters=` | Proximity search |
-| GET | `/rainfall/range?start=&end=` | Time-range query |
+| POST | `/landslides/` | Record a landslide event (GSI/NRSC/etc.) |
+| GET | `/landslides/` | List events (paginated with filters: state, district, source, date_from, date_to) |
+| GET | `/landslides/nearby` | Spatial proximity query (`latitude`, `longitude`, `radius_km`) |
+| GET | `/landslides/bbox` | Bounding box spatial query (`min_lat`, `min_lon`, `max_lat`, `max_lon`) |
+| GET | `/landslides/{id}` | Get landslide record by ID |
+| PATCH | `/landslides/{id}` | Update landslide record |
+| DELETE | `/landslides/{id}` | Delete landslide record |
+| **Rainfall Observations** | | |
+| POST | `/rainfall/` | Record a rainfall observation |
+| GET | `/rainfall/` | List observations (paginated with filters) |
+| GET | `/rainfall/nearby` | Spatial proximity query for observations |
 | GET | `/rainfall/{id}` | Get observation by ID |
-| PATCH | `/rainfall/{id}` | Update observation |
-| DELETE | `/rainfall/{id}` | Delete observation |
-| **Risk Predictions** | | |
-| POST | `/risk/` | Store ML prediction |
-| GET | `/risk/` | List predictions (paginated) |
-| GET | `/risk/near?lat=&lon=&radius_meters=` | Proximity search |
-| GET | `/risk/level/{risk_level}` | Filter by risk level |
-| POST | `/risk/trigger?lat=&lon=` | Trigger ML job (placeholder) |
-| GET | `/risk/{id}` | Get prediction by ID |
+| **Risk Predictions (Storage Contract)** | | |
+| POST | `/risk-predictions/` | Store risk prediction payload |
+| GET | `/risk-predictions/` | List predictions (paginated) |
+| GET | `/risk-predictions/nearby` | Proximity risk search |
+| GET | `/risk-predictions/{id}` | Get prediction by ID |
+| GET | `/risk-predictions/risk-map` | GeoJSON risk map features |
 | **Alerts** | | |
-| POST | `/alerts/` | Create an alert |
-| GET | `/alerts/` | List alerts (paginated) |
-| GET | `/alerts/active` | Active alerts only |
+| POST | `/alerts/` | Create an alert record |
+| GET | `/alerts/` | List alerts (paginated with filters) |
 | GET | `/alerts/{id}` | Get alert by ID |
 | PATCH | `/alerts/{id}` | Update alert status |
 | **Field Reports** | | |
-| POST | `/field-reports/` | Submit a field report |
-| GET | `/field-reports/` | List reports (paginated) |
-| GET | `/field-reports/{id}` | Get report by ID |
-| PATCH | `/field-reports/{id}` | Update report |
-| DELETE | `/field-reports/{id}` | Delete report |
+| POST | `/field-reports/` | Submit a field report (requires authentication) |
+| GET | `/field-reports/` | List field reports (paginated, requires token) |
+| GET | `/field-reports/{id}` | Get field report by ID (requires token) |
+| PATCH | `/field-reports/{id}` | Update field report (requires token) |
+| DELETE | `/field-reports/{id}` | Delete field report (requires token) |
 
-Interactive docs: `http://localhost:8000/docs`
+Interactive Swagger UI docs: `http://localhost:8000/docs`
+
+---
+
+## Seed Demo Data
+
+Populate development database with realistic North-East India (NER) records:
+
+```bash
+python scripts/seed_demo_data.py
+```
+
+This creates demo users (`admin@terrasentinel.demo`, `officer@terrasentinel.demo`), landslide inventory records, rainfall observations, risk predictions, alerts, and field reports.
 
 ---
 
 ## Running Tests
 
 ```bash
-# All tests
+# Run complete test suite (70 tests)
 pytest
 
-# With coverage
-pytest --cov=app --cov-report=term-missing
-
-# Specific file
-pytest tests/test_health.py -v
+# Verbose output
+pytest -v
 ```
 
 ---
@@ -261,20 +266,18 @@ pytest tests/test_health.py -v
 
 1. Make code changes
 2. If models changed: `alembic revision --autogenerate -m "your message"` then `alembic upgrade head`
-3. Run `pytest` to verify nothing is broken
-4. Restart the API if running locally: `uvicorn app.main:app --reload`
+3. Run `pytest` to verify all tests pass
+4. Start the API locally: `python -m uvicorn app.main:app --reload`
 
 ---
 
-## Future Components (not yet implemented)
+## Future Components (Phase 3+)
 
-- Authentication / RBAC (JWT)
-- Redis caching for risk map data
-- Background task queue (Celery / ARQ)
-- Kafka event streaming for high-volume ingestion
-- ML inference service integration
-- IMD/ISRO/GPM data ingestion pipelines
-- WebSocket / SSE live alert updates
-- Object storage for field report media
-- Audit logging
-- Prometheus metrics / OpenTelemetry tracing
+- ML risk calculation & inference pipeline
+- Automated ETL / ingestion pipelines (IMD, GPM IMERG, ISRO)
+- Redis caching for spatial risk maps
+- Event streaming (Kafka) for high-frequency sensor streams
+- Celery / background worker tasks
+- SMS / push notification service delivery
+- Object storage integration for field report media attachments
+
