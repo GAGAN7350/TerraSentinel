@@ -1,4 +1,4 @@
-# ORM models package — import all models here so Alembic can discover them
+# ORM models — import all here so Alembic discovers them via metadata
 from app.models.user import User
 from app.models.landslide import Landslide
 from app.models.rainfall import RainfallObservation
