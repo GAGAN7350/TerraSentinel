@@ -1,8 +1,8 @@
 """
 TerraSentinel FastAPI application entry point.
-
-Wires together configuration, database, middleware, and routers.
 """
+
+from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
@@ -15,27 +15,11 @@ from app.core.exceptions import register_exception_handlers
 from app.db.session import engine
 
 
-# ------------------------------------------------------------------ #
-# Lifespan (startup / shutdown)
-# ------------------------------------------------------------------ #
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Manage application lifecycle.
-    Add startup tasks here (e.g. warm up caches, validate config).
-    Shutdown tasks: close connections cleanly.
-    """
-    # --- startup ---
+    """Application lifecycle — startup / shutdown."""
     yield
-    # --- shutdown ---
     await engine.dispose()
-
-
-# ------------------------------------------------------------------ #
-# Application factory
-# ------------------------------------------------------------------ #
 
 
 def create_app() -> FastAPI:
@@ -44,7 +28,7 @@ def create_app() -> FastAPI:
         version=settings.APP_VERSION,
         description=(
             "AI-powered Landslide Early Warning and Risk Intelligence System "
-            "for North-East India."
+            "for North-East India. Phase 1 & 2 backend foundation."
         ),
         docs_url="/docs",
         redoc_url="/redoc",
@@ -52,7 +36,6 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # ---- CORS ----
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ORIGINS,
@@ -61,10 +44,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # ---- Exception handlers ----
     register_exception_handlers(app)
-
-    # ---- Routers ----
     app.include_router(api_v1_router, prefix=settings.API_V1_PREFIX)
 
     return app
