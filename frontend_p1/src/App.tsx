@@ -5,8 +5,8 @@ import { DashboardPage } from './pages/DashboardPage';
 import { RiskMapPage } from './pages/RiskMapPage';
 import { RiskDetailsPage } from './pages/RiskDetailsPage';
 import { AlertsPage } from './pages/AlertsPage';
+import { ReportsPage } from './pages/ReportsPage';
 import {
-  ReportsPlaceholder,
   InventoryPlaceholder,
 } from './pages/Placeholders';
 
@@ -21,7 +21,7 @@ export function App() {
           <Route path="/risk-map" element={<RiskMapPage />} />
           <Route path="/risk-details" element={<RiskDetailsPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
-          <Route path="/reports" element={<ReportsPlaceholder />} />
+          <Route path="/reports" element={<ReportsPage />} />
           <Route path="/inventory" element={<InventoryPlaceholder />} />
         </Routes>
       </Router>
