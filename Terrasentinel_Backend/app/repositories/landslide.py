@@ -61,11 +61,13 @@ class LandslideRepository(BaseRepository[Landslide]):
         limit: int = 200,
     ) -> list[Landslide]:
         """Return landslides within radius_km of the coordinate (PostGIS)."""
-        point = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)
+        from geoalchemy2.types import Geography
+        from sqlalchemy import cast
+        point = cast(ST_SetSRID(ST_MakePoint(longitude, latitude), 4326), Geography)
         radius_m = radius_km * 1000
         stmt = (
             select(Landslide)
-            .where(ST_DWithin(Landslide.geom, point, radius_m))
+            .where(ST_DWithin(cast(Landslide.geom, Geography), point, radius_m))
             .limit(limit)
         )
         return list((await self.session.execute(stmt)).scalars().all())

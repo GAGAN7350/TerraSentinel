@@ -23,10 +23,16 @@ class RainfallRepository(BaseRepository[RainfallObservation]):
         radius_km: float = 25.0,
         limit: int = 100,
     ) -> list[RainfallObservation]:
-        point = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)
+        from geoalchemy2.types import Geography
+        from sqlalchemy import cast
+        point = cast(ST_SetSRID(ST_MakePoint(longitude, latitude), 4326), Geography)
         stmt = (
             select(RainfallObservation)
-            .where(ST_DWithin(RainfallObservation.geom, point, radius_km * 1000))
+            .where(
+                ST_DWithin(
+                    cast(RainfallObservation.geom, Geography), point, radius_km * 1000
+                )
+            )
             .order_by(RainfallObservation.observation_time.desc())
             .limit(limit)
         )

@@ -21,10 +21,16 @@ class RiskRepository(BaseRepository[RiskPrediction]):
         radius_km: float = 25.0,
         limit: int = 50,
     ) -> list[RiskPrediction]:
-        point = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)
+        from geoalchemy2.types import Geography
+        from sqlalchemy import cast
+        point = cast(ST_SetSRID(ST_MakePoint(longitude, latitude), 4326), Geography)
         stmt = (
             select(RiskPrediction)
-            .where(ST_DWithin(RiskPrediction.geom, point, radius_km * 1000))
+            .where(
+                ST_DWithin(
+                    cast(RiskPrediction.geom, Geography), point, radius_km * 1000
+                )
+            )
             .order_by(RiskPrediction.prediction_time.desc())
             .limit(limit)
         )
