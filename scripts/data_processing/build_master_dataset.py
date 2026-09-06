@@ -13,7 +13,7 @@ from app.services.data.grid import SpatialGrid
 from app.services.data.validator import DataValidator, NER_STATES
 from app.services.data.model_input import FeatureAssemblyService
 
-GSI_INPUT = Path("data/processed/gsi_ner_landslides_complete.csv")
+GSI_INPUT = Path("data/processed/gsi_ner_balanced.csv")
 MASTER_OUTPUT = Path("data/processed/ml_ready_dataset.csv")
 
 
@@ -63,8 +63,8 @@ def build_master_dataset() -> pd.DataFrame:
     df_valid, stats = DataValidator.clean_and_validate_dataset(df_gsi)
     print(f"Validated records: {stats['valid_rows']} valid, {stats['rejected_rows']} rejected.")
 
-    # Filter to NER states
-    df_valid = DataValidator.filter_ner_records(df_valid)
+    # Filter to NER states for positives, keeping negative samples
+    df_valid = df_valid[df_valid["state"].astype(str).str.strip().isin(NER_STATES) | (df_valid["Slide"] == 0)].copy()
 
     # 2. Assign spatial cell IDs
     df_valid["cell_id"] = [
@@ -72,8 +72,10 @@ def build_master_dataset() -> pd.DataFrame:
         for lat, lon in zip(df_valid["latitude"], df_valid["longitude"])
     ]
 
-    # Ensure Target label is set for positives
-    df_valid["Slide"] = 1
+    # Ensure Target label is preserved for positives (1) and negatives (0)
+    if "Slide" not in df_valid.columns:
+        df_valid["Slide"] = 1
+    df_valid["Slide"] = df_valid["Slide"].fillna(0).astype(int)
     df_valid["history_date"] = pd.to_datetime(df_valid["history_date"], errors="coerce")
 
     # 3. Compute previous_landslides without leakage

@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
+from app.models.alert import Alert, AlertSeverity, AlertStatus
 from app.models.risk import RiskLevel, RiskPrediction
 from app.repositories.risk import RiskRepository
 from app.schemas.risk import (
@@ -23,6 +24,7 @@ from app.services.ml_inference import MLInferenceService
 
 class RiskService:
     def __init__(self, session: AsyncSession) -> None:
+        self.session = session
         self.repo = RiskRepository(session)
         self.ml_engine = MLInferenceService()
 
@@ -64,6 +66,26 @@ class RiskService:
             obj = await self.create(prediction_create)
             saved_id = obj.id
 
+            # Alert policy: Automatically issue ACTIVE CRITICAL Alert record if score >= 75.0
+            if res["risk_level"] == RiskLevel.CRITICAL or res["risk_score"] >= 75.0:
+                drivers = res.get("explanation", {}).get("primary_drivers", [])
+                driver_text = ", ".join(drivers) if drivers else "Steep slope and high precipitation"
+
+                alert_obj = Alert(
+                    alert_type="LANDSLIDE_CRITICAL_RISK",
+                    severity=AlertSeverity.CRITICAL,
+                    title=f"CRITICAL Landslide Risk Warning ({res['risk_score']:.1f}/100)",
+                    message=f"Automated ML evaluation flagged CRITICAL risk score ({res['risk_score']:.1f}/100) at ({data.latitude:.4f}, {data.longitude:.4f}). Primary drivers: {driver_text}.",
+                    latitude=data.latitude,
+                    longitude=data.longitude,
+                    geom=make_point_wkt(data.longitude, data.latitude),
+                    risk_prediction_id=obj.id,
+                    status=AlertStatus.ACTIVE,
+                    issued_at=now,
+                )
+                self.session.add(alert_obj)
+                await self.session.commit()
+
         return RiskPredictionResult(
             prediction_time=now,
             latitude=data.latitude,
@@ -95,6 +117,16 @@ class RiskService:
         res = self.ml_engine.predict_risk(features)
         now = datetime.now(timezone.utc)
 
+        # Mark explanation payload explicitly as a simulation
+        explanation = res["explanation"]
+        explanation["simulation"] = True
+        explanation["simulation_inputs"] = {
+            "slope_delta_deg": data.slope_delta_deg,
+            "rainfall_multiplier": data.rainfall_multiplier,
+            "modified_slope": modified_slope,
+            "modified_rain": modified_rain,
+        }
+
         return RiskPredictionResult(
             prediction_time=now,
             latitude=data.latitude,
@@ -104,7 +136,7 @@ class RiskService:
             confidence=res["confidence"],
             trend=res["trend"],
             model_version=res["model_version"],
-            explanation=res["explanation"],
+            explanation=explanation,
             saved_record_id=None,
         )
 

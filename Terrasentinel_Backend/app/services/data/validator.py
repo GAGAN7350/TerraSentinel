@@ -53,7 +53,7 @@ class DataValidator:
         if not (-180.0 <= lon <= 180.0):
             return {"valid": False, "reason": "LONGITUDE_OUT_OF_RANGE"}
 
-        if state and state.strip() in NER_STATES:
+        if state and isinstance(state, str) and state.strip() in NER_STATES:
             if not (NER_BOUNDS["min_lat"] <= lat <= NER_BOUNDS["max_lat"]):
                 return {"valid": False, "reason": "LATITUDE_OUTSIDE_NER_BOUNDS"}
             if not (NER_BOUNDS["min_lon"] <= lon <= NER_BOUNDS["max_lon"]):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -54,6 +55,12 @@ async def simulate_risk(
 async def get_model_info(svc: RiskService = Depends(_svc)) -> RiskModelInfoResponse:
     """Retrieve metadata, version, and feature requirements of the active ML inference model."""
     return svc.get_model_info()
+
+
+@router.get("/health", response_model=dict[str, Any])
+async def get_model_health(svc: RiskService = Depends(_svc)) -> dict[str, Any]:
+    """Lightweight ML model health check endpoint."""
+    return svc.ml_engine.get_health_status()
 
 
 @router.post("/", response_model=RiskPredictionResponse, status_code=status.HTTP_201_CREATED)
