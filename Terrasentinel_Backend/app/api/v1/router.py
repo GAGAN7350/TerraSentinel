@@ -7,6 +7,7 @@ from app.api.v1.endpoints import (
     auth,
     field_reports,
     health,
+    ingestion,
     landslides,
     rainfall,
     risk_predictions,
@@ -23,3 +24,5 @@ api_v1_router.include_router(rainfall.router, prefix="/rainfall", tags=["Rainfal
 api_v1_router.include_router(risk_predictions.router, prefix="/risk-predictions", tags=["Risk Predictions"])
 api_v1_router.include_router(alerts.router, prefix="/alerts", tags=["Alerts"])
 api_v1_router.include_router(field_reports.router, prefix="/field-reports", tags=["Field Reports"])
+api_v1_router.include_router(ingestion.router, prefix="/data/ingestion", tags=["Data Ingestion"])
+

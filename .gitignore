@@ -1,6 +1,7 @@
 # Internal specifications and stage guides
 stages/
 **/stages/
+phase3.md
 *.env
 .env
 __pycache__/
