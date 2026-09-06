@@ -62,7 +62,7 @@ def main():
     )
     print(f"Train samples: {len(X_train)} | Test samples: {len(X_test)}")
 
-    print("\n--- Step 4: Training XGBClassifier ---")
+    print("\n--- Step 4: Training XGBClassifier (Paranoid Mode for High Recall) ---")
     model = XGBClassifier(
         n_estimators=300,
         max_depth=6,
@@ -71,6 +71,7 @@ def main():
         colsample_bytree=0.8,
         eval_metric="logloss",
         random_state=42,
+        scale_pos_weight=3.0,  # Punish False Negatives 3x harder!
         n_jobs=-1
     )
     
