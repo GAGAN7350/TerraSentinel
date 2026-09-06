@@ -30,9 +30,22 @@ TELEMETRY_FEATURES = [
 
 
 class MLInferenceService:
-    """Inference engine for Landslide Risk Prediction."""
+    """Inference engine for Landslide Risk Prediction (Singleton Pattern)."""
+
+    _instance: MLInferenceService | None = None
+    _model_cache: Any = None
+    _features_cache: list[str] | None = None
+    _loaded_flag: bool = False
+
+    def __new__(cls, model_dir: Path | str | None = None) -> MLInferenceService:
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
 
     def __init__(self, model_dir: Path | str | None = None) -> None:
+        if MLInferenceService._loaded_flag:
+            return
+
         self.model_loaded = False
         self.xgb_model: Any = None
         self.feature_names: list[str] = DEFAULT_FEATURES.copy()
@@ -46,6 +59,7 @@ class MLInferenceService:
 
         self.model_dir = Path(model_dir)
         self._load_model()
+        MLInferenceService._loaded_flag = True
 
     def _load_model(self) -> None:
         features_file = self.model_dir / "model_features.json"
@@ -55,6 +69,7 @@ class MLInferenceService:
             try:
                 with open(features_file, "r", encoding="utf-8") as f:
                     self.feature_names = json.load(f)
+                MLInferenceService._features_cache = self.feature_names
                 logger.info(f"Loaded {len(self.feature_names)} features from {features_file}")
             except Exception as e:
                 logger.warning(f"Could not load feature definitions: {e}")
@@ -66,6 +81,7 @@ class MLInferenceService:
                 model = XGBClassifier()
                 model.load_model(str(model_file))
                 self.xgb_model = model
+                MLInferenceService._model_cache = model
                 self.model_loaded = True
                 logger.info(f"Successfully loaded XGBoost risk model from {model_file}")
             except Exception as e:
@@ -73,8 +89,18 @@ class MLInferenceService:
         else:
             logger.info(f"No model file found at {model_file}, fallback heuristic will be used.")
 
+    def get_health_status(self) -> dict[str, Any]:
+        """Return lightweight ML model health status and metadata."""
+        return {
+            "model_status": "HEALTHY" if self.model_loaded else "HEURISTIC_FALLBACK",
+            "model_loaded": self.model_loaded,
+            "model_version": self.model_version if self.model_loaded else "v1.2.0-heuristic",
+            "feature_count": len(self.feature_names),
+            "feature_names": self.feature_names,
+        }
+
     def predict_risk(self, features: dict[str, Any]) -> dict[str, Any]:
-        """Compute risk score (0-100), risk level, confidence, and trend from features."""
+        """Compute risk score (0-100), risk level, confidence, trend, and feature snapshot."""
         slope = float(features.get("terrain_slope", 0.0))
         rain_7d = float(features.get("rainfall_7d_mm", 0.0))
         elevation = float(features.get("elevation_meters", 0.0))
@@ -99,6 +125,8 @@ class MLInferenceService:
         risk_level = self.determine_risk_level(risk_score)
         confidence = self.determine_confidence(features)
         trend = self.determine_trend(features)
+
+        # Generate structured explanation with complete feature input snapshot
         explanation = self.generate_explanation(features, risk_score)
 
         return {
@@ -161,9 +189,17 @@ class MLInferenceService:
         if not factors:
             factors.append("Low slope gradient and minimal recent precipitation")
 
+        # Preserve full feature input snapshot for auditability
+        feature_snapshot = {
+            k: float(v) if isinstance(v, (int, float)) else str(v)
+            for k, v in features.items()
+            if v is not None
+        }
+
         return {
             "primary_drivers": factors,
             "slope_contribution": round(min(slope / 60.0, 1.0) * 45.0, 1),
             "precipitation_contribution": round(min(rain_7d / 300.0, 1.0) * 35.0, 1),
             "soil_contribution": round(min(clay / 500.0, 1.0) * 20.0, 1),
+            "feature_snapshot": feature_snapshot,
         }

@@ -2,6 +2,7 @@
 stages/
 **/stages/
 phase3.md
+phase4.md
 *.env
 .env
 __pycache__/
