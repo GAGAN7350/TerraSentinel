@@ -1,4 +1,4 @@
-"""Risk prediction endpoints."""
+"""Risk prediction endpoints — storage contract, real-time ML inference & scenario simulator."""
 
 from __future__ import annotations
 
@@ -10,7 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_async_session
 from app.models.risk import RiskLevel
 from app.schemas.common import PaginatedResponse
-from app.schemas.risk import RiskPredictionCreate, RiskPredictionResponse
+from app.schemas.risk import (
+    RiskModelInfoResponse,
+    RiskPredictionCreate,
+    RiskPredictionResponse,
+    RiskPredictionResult,
+    RiskPredictRequest,
+    RiskSimulationRequest,
+)
 from app.services.geo import geometry_to_geojson
 from app.services.risk import RiskService
 
@@ -25,6 +32,28 @@ def _enrich(obj) -> RiskPredictionResponse:
     resp = RiskPredictionResponse.model_validate(obj)
     resp.geometry = geometry_to_geojson(obj.geom)
     return resp
+
+
+@router.post("/predict", response_model=RiskPredictionResult, status_code=status.HTTP_200_OK)
+async def predict_risk(
+    data: RiskPredictRequest, svc: RiskService = Depends(_svc)
+) -> RiskPredictionResult:
+    """Execute real-time XGBoost ML risk prediction for given environmental & terrain features."""
+    return await svc.predict_live(data)
+
+
+@router.post("/simulate", response_model=RiskPredictionResult, status_code=status.HTTP_200_OK)
+async def simulate_risk(
+    data: RiskSimulationRequest, svc: RiskService = Depends(_svc)
+) -> RiskPredictionResult:
+    """Simulate 'what-if' environmental scenarios by modifying slope or rainfall parameters."""
+    return await svc.simulate_scenario(data)
+
+
+@router.get("/model-info", response_model=RiskModelInfoResponse)
+async def get_model_info(svc: RiskService = Depends(_svc)) -> RiskModelInfoResponse:
+    """Retrieve metadata, version, and feature requirements of the active ML inference model."""
+    return svc.get_model_info()
 
 
 @router.post("/", response_model=RiskPredictionResponse, status_code=status.HTTP_201_CREATED)
@@ -44,7 +73,9 @@ async def list_predictions(
     items, total = await svc.list(page=page, page_size=page_size)
     return PaginatedResponse(
         items=[_enrich(i) for i in items],
-        page=page, page_size=page_size, total=total,
+        page=page,
+        page_size=page_size,
+        total=total,
     )
 
 

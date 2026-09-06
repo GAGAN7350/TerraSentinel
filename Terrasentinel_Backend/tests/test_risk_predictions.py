@@ -1,4 +1,4 @@
-"""Risk prediction endpoint validation tests."""
+"""Risk prediction endpoint validation and real-time inference tests."""
 
 from __future__ import annotations
 
@@ -50,6 +50,57 @@ async def test_create_prediction_invalid_risk_level(client: AsyncClient) -> None
         },
     )
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_predict_risk_endpoint(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/v1/risk-predictions/predict",
+        json={
+            "latitude": 27.33,
+            "longitude": 88.61,
+            "terrain_slope": 42.0,
+            "rainfall_7d_mm": 210.0,
+            "soil_clay_0_5cm": 310.0,
+            "elevation_meters": 1450.0,
+            "store_in_db": False,
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "risk_score" in data
+    assert 0.0 <= data["risk_score"] <= 100.0
+    assert "risk_level" in data
+    assert "explanation" in data
+
+
+@pytest.mark.asyncio
+async def test_simulate_risk_endpoint(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/v1/risk-predictions/simulate",
+        json={
+            "latitude": 27.33,
+            "longitude": 88.61,
+            "terrain_slope": 30.0,
+            "rainfall_7d_mm": 100.0,
+            "slope_delta_deg": 15.0,
+            "rainfall_multiplier": 1.8,
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "risk_score" in data
+    assert data["risk_score"] > 30.0
+
+
+@pytest.mark.asyncio
+async def test_model_info_endpoint(client: AsyncClient) -> None:
+    response = await client.get("/api/v1/risk-predictions/model-info")
+    assert response.status_code == 200
+    data = response.json()
+    assert "model_version" in data
+    assert "feature_names" in data
+    assert isinstance(data["feature_names"], list)
 
 
 @pytest.mark.asyncio
