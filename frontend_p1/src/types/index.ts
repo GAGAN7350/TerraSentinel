@@ -84,6 +84,21 @@ export interface RiskPrediction {
   created_at: string;
 }
 
+export interface RiskSector {
+  id: string;
+  name: string;
+  district: string;
+  state: string;
+  latitude: number;
+  longitude: number;
+  riskScore: number;
+  riskLevel: RiskLevel;
+  slopeAngle: number;
+  rainfall24h: number;
+  lithology: string;
+  lastUpdated?: string;
+}
+
 export type AlertSeverity = 'INFO' | 'WARNING' | 'HIGH' | 'CRITICAL';
 export type AlertStatus = 'DRAFT' | 'ACTIVE' | 'RESOLVED' | 'EXPIRED';
 
