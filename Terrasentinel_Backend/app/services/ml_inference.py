@@ -65,8 +65,9 @@ class MLInferenceService:
         self.xgb_model: Any = None
         self.explainer: Any = None                   # Phase 6: SHAP TreeExplainer
         self.domain_bounds: dict[str, Any] = {}       # Phase 7: OOD domain bounds
+        self.probability_calibrator: dict[str, Any] = {}  # Phase 8: Platt Scaling calibrator
         self.feature_names: list[str] = DEFAULT_FEATURES.copy()
-        self.model_version = "v1.5.0-xgboost-ood-guardrails"  # Phase 7: updated model version
+        self.model_version = "v1.6.0-xgboost-calibrated"  # Phase 8: updated model version
         self.imputation_params: dict[str, Any] = {}   # Phase 4: train-set medians
         self.inference_config: dict[str, Any] = {}    # Phase 5: threshold + operational params
         self.classification_threshold: float = 0.50  # Phase 5: explicit auditable default
@@ -86,6 +87,7 @@ class MLInferenceService:
         model_file       = self.model_dir / "xgboost_risk_model.json"
         imputation_file  = self.model_dir / "imputation_params.json"
         bounds_file      = self.model_dir / "input_domain_bounds.json"
+        calibrator_file  = self.model_dir / "probability_calibrator.json"
 
         if features_file.exists():
             try:
@@ -124,6 +126,20 @@ class MLInferenceService:
                 logger.warning(f"Could not load input_domain_bounds.json: {e}")
         else:
             logger.warning(f"No input_domain_bounds.json found at {bounds_file}")
+
+        # Phase 8: Load Platt Scaling probability calibrator
+        if calibrator_file.exists():
+            try:
+                with open(calibrator_file, "r", encoding="utf-8") as f:
+                    self.probability_calibrator = json.load(f)
+                logger.info(
+                    f"Loaded probability calibrator (Platt Scaling A={self.probability_calibrator.get('platt_a')}, "
+                    f"B={self.probability_calibrator.get('platt_b')}) from {calibrator_file}"
+                )
+            except Exception as e:
+                logger.warning(f"Could not load probability_calibrator.json: {e}")
+        else:
+            logger.warning(f"No probability_calibrator.json found at {calibrator_file}")
 
         if model_file.exists():
             try:
@@ -174,7 +190,7 @@ class MLInferenceService:
         return {
             "model_status": "HEALTHY" if self.model_loaded else "HEURISTIC_FALLBACK",
             "model_loaded": self.model_loaded,
-            "model_version": self.model_version if self.model_loaded else "v1.5.0-heuristic",
+            "model_version": self.model_version if self.model_loaded else "v1.6.0-heuristic",
             "feature_count": len(self.feature_names),
             "feature_names": self.feature_names,
             "imputation_params": self.imputation_params,
@@ -182,6 +198,7 @@ class MLInferenceService:
             "high_sensitivity_threshold": self.inference_config.get("high_sensitivity_threshold"),
             "shap_explainer_active": self.explainer is not None,  # Phase 6: TreeExplainer state
             "domain_bounds_active": self.domain_bounds_active,   # Phase 7: OOD state
+            "probability_calibrator_active": len(self.probability_calibrator) > 0,  # Phase 8: Platt Scaling
         }
 
     @property
@@ -251,6 +268,19 @@ class MLInferenceService:
 
         is_ood = len(reasons) > 0
         return is_ood, reasons
+
+    def calibrate_probability(self, raw_prob: float) -> float:
+        """Apply Platt Scaling to map raw XGBoost probability to true posterior probability."""
+        if not self.probability_calibrator:
+            return raw_prob
+        a = float(self.probability_calibrator.get("platt_a", 1.0))
+        b = float(self.probability_calibrator.get("platt_b", 0.0))
+        eps = 1e-7
+        p = max(eps, min(1.0 - eps, raw_prob))
+        z = math.log(p / (1.0 - p))
+        logit_cal = a * z + b
+        p_cal = 1.0 / (1.0 + math.exp(-logit_cal))
+        return round(float(p_cal), 4)
 
     def predict_risk(self, features: dict[str, Any]) -> dict[str, Any]:
         """Compute risk score (0-100), risk level, confidence, trend, OOD guardrail, and feature snapshot."""
@@ -358,16 +388,18 @@ class MLInferenceService:
             "risk_level": risk_level,
             "confidence": confidence,
             "trend": trend,
-            "model_version": self.model_version if self.model_loaded else "v1.5.0-heuristic",
+            "model_version": self.model_version if self.model_loaded else "v1.6.0-heuristic",
             "out_of_distribution": is_ood,        # Phase 7: OOD guardrail flag
             "ood_reasons": ood_reasons,            # Phase 7: OOD guardrail reasons list
             "explanation": explanation,
         }
 
-        # Phase 5: Expose raw probability and active threshold for operator transparency.
-        # Only available when the XGBoost model is loaded (not heuristic path).
+        # Phase 5 & Phase 8: Expose raw probability, calibrated probability, and active threshold
         if self.model_loaded:
             result["raw_probability"] = round(prob, 4) if prob is not None else None
+            result["calibrated_probability"] = (
+                self.calibrate_probability(prob) if prob is not None else None
+            )
             result["classification_threshold"] = self.classification_threshold
 
         return result

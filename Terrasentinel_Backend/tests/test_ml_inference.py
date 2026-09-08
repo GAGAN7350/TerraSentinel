@@ -101,3 +101,24 @@ def test_ood_domain_guardrails():
     assert res_ood["confidence"] < res_in["confidence"]
 
 
+def test_probability_calibration():
+    engine = MLInferenceService()
+    health = engine.get_health_status()
+    assert health["probability_calibrator_active"] is True
+
+    sample = {
+        "terrain_slope": 35.0,
+        "rainfall_7d_mm": 120.0,
+        "elevation_meters": 1500.0,
+        "soil_clay_0_5cm": 300.0,
+        "soil_sand_0_5cm": 340.0,
+    }
+    res = engine.predict_risk(sample)
+    assert "raw_probability" in res
+    assert "calibrated_probability" in res
+    assert res["raw_probability"] is not None
+    assert res["calibrated_probability"] is not None
+    assert 0.0 <= res["calibrated_probability"] <= 1.0
+
+
+
