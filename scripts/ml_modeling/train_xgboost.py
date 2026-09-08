@@ -79,8 +79,42 @@ def main():
     )
     print(f"Train samples: {len(X_train)} | Test samples: {len(X_test)}")
 
+    # --- Phase 4: Explicit Median Imputation (train-set only) ---
+    # PROBLEM: 271 NaN soil values are 100% in the positive class (GSI historical data gap).
+    # XGBoost natively routes NaN samples to a learned default branch, silently using
+    # missingness as an implicit class signal (audit: 99.74% prob on all 271 NaN rows).
+    # This is opaque and unauditable. We replace it with explicit, transparent imputation.
+    #
+    # STRATEGY: Median imputation fitted on X_train only.
+    # - Scientifically neutral: does not encode class information into imputed values.
+    # - Train-only fitting: prevents test-set leakage.
+    # - Saved to models/imputation_params.json: makes inference reproducible and auditable.
+    #
+    # REJECTED: Missingness indicator features (would bias inference: NaN at runtime
+    # means 'user did not supply data', NOT 'this is a landslide site').
+    print("\n--- Phase 4: Explicit Median Imputation (fitted on train set only) ---")
+    soil_cols_with_nan = [c for c in ["soil_clay_0_5cm", "soil_sand_0_5cm"] if c in X_train.columns]
+
+    imputation_params = {}
+    for col in soil_cols_with_nan:
+        train_nan_count = X_train[col].isnull().sum()
+        test_nan_count  = X_test[col].isnull().sum()
+        train_median    = float(X_train[col].median())
+        imputation_params[col] = {"strategy": "median", "value": train_median}
+        print(f"  {col}: train NaN={train_nan_count}, test NaN={test_nan_count}, train_median={train_median:.2f}")
+        X_train[col] = X_train[col].fillna(train_median)
+        X_test[col]  = X_test[col].fillna(train_median)
+
+    # Verify no NaNs remain
+    remaining_nan_train = X_train.isnull().sum().sum()
+    remaining_nan_test  = X_test.isnull().sum().sum()
+    print(f"  Remaining NaN after imputation — train: {remaining_nan_train}, test: {remaining_nan_test}")
+    assert remaining_nan_train == 0, "NaN remains in X_train after imputation!"
+    assert remaining_nan_test  == 0, "NaN remains in X_test after imputation!"
+
     print("\n--- Step 4: Training XGBClassifier (Paranoid Mode for High Recall) ---")
     print(f"  Final feature set ({len(X.columns)}): {list(X.columns)}")
+    print(f"  NaN count in X_train: {X_train.isnull().sum().sum()} (must be 0)")
     model = XGBClassifier(
         n_estimators=300,
         max_depth=6,
@@ -142,6 +176,14 @@ def main():
         json.dump(list(X.columns), f, indent=2)
     print(f"Feature names saved to {feature_metadata_path}")
     print(f"  Model features: {list(X.columns)}")
+
+    # Save imputation parameters for inference reproducibility.
+    # The inference layer MUST apply the same imputation before calling the model.
+    imputation_path = MODELS_DIR / "imputation_params.json"
+    with open(imputation_path, "w") as f:
+        json.dump(imputation_params, f, indent=2)
+    print(f"Imputation params saved to {imputation_path}")
+    print(f"  {imputation_params}")
 
     return {
         "accuracy": acc,

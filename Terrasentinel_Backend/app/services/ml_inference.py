@@ -64,7 +64,8 @@ class MLInferenceService:
         self.model_loaded = False
         self.xgb_model: Any = None
         self.feature_names: list[str] = DEFAULT_FEATURES.copy()
-        self.model_version = "v1.3.0-xgboost-circular-aspect"
+        self.model_version = "v1.4.0-xgboost-imputed"
+        self.imputation_params: dict[str, Any] = {}  # Phase 4: loaded from models/imputation_params.json
 
         if model_dir is None:
             base = Path(__file__).resolve().parents[3]
@@ -77,8 +78,9 @@ class MLInferenceService:
         MLInferenceService._loaded_flag = True
 
     def _load_model(self) -> None:
-        features_file = self.model_dir / "model_features.json"
-        model_file = self.model_dir / "xgboost_risk_model.json"
+        features_file    = self.model_dir / "model_features.json"
+        model_file       = self.model_dir / "xgboost_risk_model.json"
+        imputation_file  = self.model_dir / "imputation_params.json"
 
         if features_file.exists():
             try:
@@ -88,6 +90,24 @@ class MLInferenceService:
                 logger.info(f"Loaded {len(self.feature_names)} features from {features_file}")
             except Exception as e:
                 logger.warning(f"Could not load feature definitions: {e}")
+
+        # Phase 4: Load imputation parameters.
+        # These medians are fitted on the training set only and must be applied
+        # at inference time to fill any missing soil values before model prediction.
+        if imputation_file.exists():
+            try:
+                with open(imputation_file, "r", encoding="utf-8") as f:
+                    self.imputation_params = json.load(f)
+                logger.info(
+                    f"Loaded imputation params for {list(self.imputation_params.keys())} from {imputation_file}"
+                )
+            except Exception as e:
+                logger.warning(f"Could not load imputation params: {e}. NaN values will use 0.0 fallback.")
+        else:
+            logger.warning(
+                f"No imputation_params.json found at {imputation_file}. "
+                "Missing soil values will not be imputed correctly."
+            )
 
         if model_file.exists():
             try:
@@ -109,19 +129,31 @@ class MLInferenceService:
         return {
             "model_status": "HEALTHY" if self.model_loaded else "HEURISTIC_FALLBACK",
             "model_loaded": self.model_loaded,
-            "model_version": self.model_version if self.model_loaded else "v1.2.0-heuristic",
+            "model_version": self.model_version if self.model_loaded else "v1.4.0-heuristic",
             "feature_count": len(self.feature_names),
             "feature_names": self.feature_names,
+            "imputation_params": self.imputation_params,
         }
 
     def predict_risk(self, features: dict[str, Any]) -> dict[str, Any]:
         """Compute risk score (0-100), risk level, confidence, trend, and feature snapshot."""
-        slope = float(features.get("terrain_slope", 0.0))
-        rain_7d = float(features.get("rainfall_7d_mm", 0.0))
-        elevation = float(features.get("elevation_meters", 0.0))
-        clay = float(features.get("soil_clay_0_5cm", 0.0))
-        sand = float(features.get("soil_sand_0_5cm", 0.0))
-        raw_aspect = float(features.get("terrain_aspect", 0.0))
+        # Use _safe_float throughout: API callers may pass None for optional fields.
+        def _safe_float(val: Any, default: float = 0.0) -> float:
+            """Convert value to float safely, returning default if None or NaN."""
+            if val is None:
+                return default
+            try:
+                v = float(val)
+                return default if math.isnan(v) else v
+            except (TypeError, ValueError):
+                return default
+
+        slope     = _safe_float(features.get("terrain_slope"))
+        rain_7d   = _safe_float(features.get("rainfall_7d_mm"))
+        elevation = _safe_float(features.get("elevation_meters"))
+        clay      = _safe_float(features.get("soil_clay_0_5cm"))   # used for heuristic fallback
+        sand      = _safe_float(features.get("soil_sand_0_5cm"))   # used for heuristic fallback
+        raw_aspect = _safe_float(features.get("terrain_aspect"))
 
         if self.model_loaded and self.xgb_model is not None:
             try:
@@ -133,6 +165,19 @@ class MLInferenceService:
                 aspect_sin = math.sin(aspect_rad)
                 aspect_cos = math.cos(aspect_rad)
 
+                # Phase 4: Apply median imputation for any missing soil values.
+                # Imputation values are the training-set medians loaded from imputation_params.json.
+                # This is the same transformation applied during training — making NaN handling
+                # explicit and auditable rather than relying on XGBoost's opaque NaN routing.
+                def _impute(col: str, raw_val: Any) -> float:
+                    """Return imputed value if input is None/NaN, else return raw value."""
+                    if raw_val is None or (isinstance(raw_val, float) and math.isnan(raw_val)):
+                        imp = self.imputation_params.get(col, {})
+                        fallback = imp.get("value", 0.0)
+                        logger.debug(f"Imputing missing {col} with training median {fallback:.2f}")
+                        return float(fallback)
+                    return float(raw_val)
+
                 # Build model input using the exact feature names from model_features.json
                 model_input: dict[str, Any] = {}
                 for col in self.feature_names:
@@ -141,7 +186,7 @@ class MLInferenceService:
                     elif col == "aspect_cos":
                         model_input[col] = aspect_cos
                     else:
-                        model_input[col] = features.get(col, 0.0)
+                        model_input[col] = _impute(col, features.get(col))
 
                 df = pd.DataFrame([model_input])[self.feature_names]
                 prob = float(self.xgb_model.predict_proba(df)[0][1])
@@ -200,8 +245,10 @@ class MLInferenceService:
 
     @staticmethod
     def determine_trend(features: dict[str, Any]) -> RiskTrend:
-        rain_7d = float(features.get("rainfall_7d_mm", 0.0))
-        rain_15d = float(features.get("rainfall_15d_mm", 0.0))
+        v7  = features.get("rainfall_7d_mm")
+        v15 = features.get("rainfall_15d_mm")
+        rain_7d  = float(v7)  if (v7  is not None and not (isinstance(v7, float)  and math.isnan(v7)))  else 0.0
+        rain_15d = float(v15) if (v15 is not None and not (isinstance(v15, float) and math.isnan(v15))) else 0.0
         if rain_7d > 100.0 or (rain_15d > 0 and (rain_7d / 7.0) > (rain_15d / 15.0)):
             return RiskTrend.INCREASING
         elif rain_7d < 10.0:
@@ -210,13 +257,23 @@ class MLInferenceService:
 
     @staticmethod
     def generate_explanation(features: dict[str, Any], score: float) -> dict[str, Any]:
-        slope = float(features.get("terrain_slope", 0.0))
-        rain_7d = float(features.get("rainfall_7d_mm", 0.0))
-        clay = float(features.get("soil_clay_0_5cm", 0.0))
+        def _sf(val: Any, default: float = 0.0) -> float:
+            """None-safe float conversion."""
+            if val is None:
+                return default
+            try:
+                v = float(val)
+                return default if math.isnan(v) else v
+            except (TypeError, ValueError):
+                return default
+
+        slope   = _sf(features.get("terrain_slope"))
+        rain_7d = _sf(features.get("rainfall_7d_mm"))
+        clay    = _sf(features.get("soil_clay_0_5cm"))
 
         factors = []
         if slope >= 30.0:
-            factors.append(f"Steep terrain slope ({slope:.1f}°)")
+            factors.append(f"Steep terrain slope ({slope:.1f} deg)")
         if rain_7d >= 100.0:
             factors.append(f"Heavy 7-day cumulative rainfall ({rain_7d:.1f} mm)")
         if clay >= 300.0:
