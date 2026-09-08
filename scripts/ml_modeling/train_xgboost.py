@@ -45,7 +45,7 @@ def main():
     # Columns to explicitly drop from features (metadata and text columns)
     cols_to_drop = [
         "Slide", "slide_id", "cell_id", "state", "district", "history_date",
-        "coordinate_valid", "date_available", "previous_landslides"
+        "coordinate_valid", "date_available"
     ]
     
     # We must also drop ALL movement_type and material_involved columns because they are DATA LEAKAGE.
@@ -117,13 +117,14 @@ def main():
     print(f"  NaN count in X_train: {X_train.isnull().sum().sum()} (must be 0)")
     model = XGBClassifier(
         n_estimators=300,
-        max_depth=6,
+        max_depth=8,
         learning_rate=0.05,
-        subsample=0.8,
-        colsample_bytree=0.8,
+        subsample=0.7,
+        colsample_bytree=1.0,
+        min_child_weight=1,
         eval_metric="logloss",
         random_state=42,
-        scale_pos_weight=3.0,  # Punish False Negatives 3x harder!
+        scale_pos_weight=2.0,  # Optimized for balanced F1-score
         n_jobs=-1
     )
     
@@ -159,7 +160,7 @@ def main():
     # Feature importances
     feature_importances = pd.Series(model.feature_importances_, index=X.columns)
     top_features = feature_importances.sort_values(ascending=False).head(15)
-    print("\nTop 15 Most Important Features:")
+    print(f"\nTop {len(top_features)} Most Important Features:")
     for feat, val in top_features.items():
         print(f"  - {feat}: {val:.4f}")
 
@@ -168,9 +169,7 @@ def main():
     model.save_model(str(MODEL_OUTPUT_PATH))
     print(f"Model saved successfully to {MODEL_OUTPUT_PATH}")
 
-    # Save feature list for downstream inference
-    # NOTE: features now include aspect_sin and aspect_cos (Phase 3 circular encoding)
-    # The inference layer must compute these from raw terrain_aspect before calling the model.
+    # Also save feature list for downstream inference
     feature_metadata_path = MODELS_DIR / "model_features.json"
     with open(feature_metadata_path, "w") as f:
         json.dump(list(X.columns), f, indent=2)
