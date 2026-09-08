@@ -32,8 +32,8 @@ def test_predict_risk_dangerous_scenario():
         "terrain_slope": 55.0,
         "rainfall_7d_mm": 350.0,
         "elevation_meters": 2200.0,
-        "soil_clay_0_5cm": 450.0,
-        "soil_sand_0_5cm": 150.0,
+        "soil_clay_0_5cm": 300.0,
+        "soil_sand_0_5cm": 340.0,
         "rainfall_15d_mm": 500.0,
     }
     result = engine.predict_risk(dangerous_input)
@@ -48,3 +48,77 @@ def test_determine_risk_level():
     assert MLInferenceService.determine_risk_level(65.0) == RiskLevel.HIGH
     assert MLInferenceService.determine_risk_level(35.0) == RiskLevel.MODERATE
     assert MLInferenceService.determine_risk_level(10.0) == RiskLevel.LOW
+
+
+def test_shap_explainability():
+    engine = MLInferenceService()
+    assert engine.explainer is not None
+    sample = {
+        "terrain_slope": 35.0,
+        "rainfall_7d_mm": 120.0,
+        "elevation_meters": 1500.0,
+        "soil_clay_0_5cm": 350.0,
+        "soil_sand_0_5cm": 200.0,
+        "terrain_aspect": 90.0,
+    }
+    result = engine.predict_risk(sample)
+    exp = result["explanation"]
+    assert "shap_values" in exp
+    assert "shap_base_value" in exp
+    assert exp["explainability_method"] == "TreeSHAP (exact log-odds attribution)"
+    assert isinstance(exp["shap_values"], dict)
+    assert len(exp["shap_values"]) == len(engine.feature_names)
+    assert "terrain_slope" in exp["shap_values"]
+
+
+def test_ood_domain_guardrails():
+    engine = MLInferenceService()
+    assert engine.domain_bounds_active is True
+
+    # In-domain query (NER coordinates + normal elevation)
+    in_domain = {
+        "latitude": 25.5,
+        "longitude": 91.8,
+        "elevation_meters": 1200.0,
+        "terrain_slope": 30.0,
+        "rainfall_7d_mm": 150.0,
+    }
+    res_in = engine.predict_risk(in_domain)
+    assert res_in["out_of_distribution"] is False
+    assert len(res_in["ood_reasons"]) == 0
+
+    # Out-of-domain query (Out of NER coordinates + extreme elevation)
+    ood_query = {
+        "latitude": 12.97,  # Bangalore (outside NER lat 21.5-29.5)
+        "longitude": 77.59,
+        "elevation_meters": 8500.0,  # Unphysical (outside max 4166.0m)
+        "terrain_slope": 30.0,
+        "rainfall_7d_mm": 150.0,
+    }
+    res_ood = engine.predict_risk(ood_query)
+    assert res_ood["out_of_distribution"] is True
+    assert len(res_ood["ood_reasons"]) >= 2
+    assert res_ood["confidence"] < res_in["confidence"]
+
+
+def test_probability_calibration():
+    engine = MLInferenceService()
+    health = engine.get_health_status()
+    assert health["probability_calibrator_active"] is True
+
+    sample = {
+        "terrain_slope": 35.0,
+        "rainfall_7d_mm": 120.0,
+        "elevation_meters": 1500.0,
+        "soil_clay_0_5cm": 300.0,
+        "soil_sand_0_5cm": 340.0,
+    }
+    res = engine.predict_risk(sample)
+    assert "raw_probability" in res
+    assert "calibrated_probability" in res
+    assert res["raw_probability"] is not None
+    assert res["calibrated_probability"] is not None
+    assert 0.0 <= res["calibrated_probability"] <= 1.0
+
+
+

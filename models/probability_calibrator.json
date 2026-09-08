@@ -1,0 +1,12 @@
+{
+  "method": "Platt Scaling (Sigmoid / Logistic Regression on Raw Logits)",
+  "scale_pos_weight_used": 3.0,
+  "platt_a": 1.623699,
+  "platt_b": -1.814329,
+  "metrics": {
+    "brier_score_raw": 0.0433,
+    "brier_score_calibrated": 0.0323,
+    "ece_raw": 0.0521,
+    "ece_calibrated": 0.0118
+  }
+}

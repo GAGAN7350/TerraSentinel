@@ -3,5 +3,6 @@
   "soil_clay_0_5cm",
   "soil_sand_0_5cm",
   "terrain_slope",
-  "terrain_aspect"
+  "aspect_sin",
+  "aspect_cos"
 ]
