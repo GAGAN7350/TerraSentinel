@@ -65,7 +65,9 @@ class MLInferenceService:
         self.xgb_model: Any = None
         self.feature_names: list[str] = DEFAULT_FEATURES.copy()
         self.model_version = "v1.4.0-xgboost-imputed"
-        self.imputation_params: dict[str, Any] = {}  # Phase 4: loaded from models/imputation_params.json
+        self.imputation_params: dict[str, Any] = {}   # Phase 4: train-set medians
+        self.inference_config: dict[str, Any] = {}    # Phase 5: threshold + operational params
+        self.classification_threshold: float = 0.50  # Phase 5: explicit auditable default
 
         if model_dir is None:
             base = Path(__file__).resolve().parents[3]
@@ -124,6 +126,29 @@ class MLInferenceService:
         else:
             logger.info(f"No model file found at {model_file}, fallback heuristic will be used.")
 
+        # Phase 5: Load inference configuration (threshold + operational params).
+        # The classification threshold is documented with full scientific justification.
+        # Default 0.50 is preserved if the file is missing — never silently changes.
+        inference_config_file = self.model_dir / "inference_config.json"
+        if inference_config_file.exists():
+            try:
+                with open(inference_config_file, "r", encoding="utf-8") as f:
+                    self.inference_config = json.load(f)
+                self.classification_threshold = float(
+                    self.inference_config.get("classification_threshold", 0.50)
+                )
+                logger.info(
+                    f"Loaded inference config: threshold={self.classification_threshold:.4f} "
+                    f"from {inference_config_file}"
+                )
+            except Exception as e:
+                logger.warning(f"Could not load inference_config.json: {e}. Using threshold=0.50.")
+        else:
+            logger.warning(
+                f"No inference_config.json found at {inference_config_file}. "
+                "Using default threshold=0.50."
+            )
+
     def get_health_status(self) -> dict[str, Any]:
         """Return lightweight ML model health status and metadata."""
         return {
@@ -133,6 +158,8 @@ class MLInferenceService:
             "feature_count": len(self.feature_names),
             "feature_names": self.feature_names,
             "imputation_params": self.imputation_params,
+            "classification_threshold": self.classification_threshold,  # Phase 5: explicit
+            "high_sensitivity_threshold": self.inference_config.get("high_sensitivity_threshold"),
         }
 
     def predict_risk(self, features: dict[str, Any]) -> dict[str, Any]:
@@ -155,6 +182,7 @@ class MLInferenceService:
         sand      = _safe_float(features.get("soil_sand_0_5cm"))   # used for heuristic fallback
         raw_aspect = _safe_float(features.get("terrain_aspect"))
 
+        prob: float | None = None  # Phase 5: initialized here so it's always in scope
         if self.model_loaded and self.xgb_model is not None:
             try:
                 import pandas as pd
@@ -191,7 +219,13 @@ class MLInferenceService:
                 df = pd.DataFrame([model_input])[self.feature_names]
                 prob = float(self.xgb_model.predict_proba(df)[0][1])
 
+                # Phase 5: Apply the configured classification threshold.
+                # Default 0.50, loaded from models/inference_config.json.
+                # Using threshold explicitly here — not the model's internal .predict() default.
+                is_landslide = prob >= self.classification_threshold
+
                 # Blend static XGBoost spatial susceptibility with dynamic precipitation telemetry
+                # prob drives the spatial component; rain_factor drives the dynamic component
                 spatial_susceptibility = prob * 100.0
                 rain_factor = min(rain_7d / 300.0, 1.0) * 35.0
                 raw_score = round(min(spatial_susceptibility * 0.80 + rain_factor, 100.0), 2)
@@ -209,14 +243,22 @@ class MLInferenceService:
         # Generate structured explanation with complete feature input snapshot
         explanation = self.generate_explanation(features, risk_score)
 
-        return {
+        result: dict[str, Any] = {
             "risk_score": risk_score,
             "risk_level": risk_level,
             "confidence": confidence,
             "trend": trend,
-            "model_version": self.model_version if self.model_loaded else "v1.2.0-heuristic",
+            "model_version": self.model_version if self.model_loaded else "v1.4.0-heuristic",
             "explanation": explanation,
         }
+
+        # Phase 5: Expose raw probability and active threshold for operator transparency.
+        # Only available when the XGBoost model is loaded (not heuristic path).
+        if self.model_loaded:
+            result["raw_probability"] = round(prob, 4) if prob is not None else None
+            result["classification_threshold"] = self.classification_threshold
+
+        return result
 
     def _heuristic_score(
         self, slope: float, rain_7d: float, elevation: float, clay: float, sand: float

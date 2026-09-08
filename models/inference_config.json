@@ -1,0 +1,20 @@
+{
+  "model_version": "v1.4.0-xgboost-imputed",
+  "classification_threshold": 0.50,
+  "threshold_selection_rationale": "Threshold 0.50 selected after exhaustive PR-curve sweep across all candidate thresholds. XGBoost scale_pos_weight=3.0 already biases the probability distribution recall-first, making 0.50 the empirically optimal point for FN minimization (FN=19 on 4127-sample test set). Raising the threshold to 0.583 (best F2) increases accuracy to 94.8% and reduces FP by 51, but increases FN from 19 to 31 -- unacceptable for a safety-critical early warning system.",
+  "threshold_candidates_evaluated": {
+    "default_0.50":             {"threshold": 0.50,   "accuracy": 0.938, "precision": 0.899, "recall": 0.991, "f1": 0.943, "f2": 0.971, "fn": 19,  "fp": 236},
+    "best_f2_recall_weighted":  {"threshold": 0.5831, "accuracy": 0.948, "precision": 0.919, "recall": 0.985, "f1": 0.951, "f2": 0.971, "fn": 31,  "fp": 185},
+    "best_f1":                  {"threshold": 0.7703, "accuracy": 0.956, "precision": 0.952, "recall": 0.963, "f1": 0.957, "f2": 0.961, "fn": 79,  "fp": 104},
+    "best_youden_j":            {"threshold": 0.8457, "accuracy": 0.956, "precision": 0.971, "recall": 0.942, "f1": 0.956, "f2": 0.948, "fn": 123, "fp": 60}
+  },
+  "high_sensitivity_threshold": 0.3546,
+  "high_sensitivity_rationale": "Use threshold=0.3546 for maximum-sensitivity operation (Recall=99.53%, FN=10). Produces more false positives (FP=~370) but misses fewest events. Intended for monsoon peak season or high-alert operational modes only.",
+  "domain_rationale": "For a landslide early warning system, False Negatives (missed landslide events) are safety-critical failures. False Positives cause alert fatigue but are operationally recoverable. This informed the use of scale_pos_weight=3.0 during training and the selection of threshold=0.50 as the default operating point.",
+  "test_set_stats": {
+    "total_samples": 4127,
+    "positive_samples": 2127,
+    "negative_samples": 2000,
+    "split": "stratified 80/20, random_state=42"
+  }
+}
