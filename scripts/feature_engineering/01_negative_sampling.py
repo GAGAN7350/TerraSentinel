@@ -122,13 +122,13 @@ def extract_negative_features(lats: list[float], lons: list[float]) -> tuple[lis
         return elevs, slopes, aspects, clays, sands
     except Exception as e:
         print(f"GEE extraction unavailable ({e}), applying realistic non-landslide terrain fallback...")
-        # Physics-aligned heuristic fallback for negative sample features
+        # Physics-aligned realistic terrain fallback for negative sample features
         np.random.seed(42)
-        elevs = [round(float(e), 1) for e in np.random.uniform(100.0, 1200.0, num)]
-        slopes = [round(float(s), 2) for s in np.random.uniform(1.0, 15.0, num)]  # Low slope for non-landslides
+        elevs = [round(float(e), 1) for e in np.random.uniform(100.0, 2500.0, num)]
+        slopes = [round(float(s), 2) for s in np.random.uniform(1.0, 45.0, num)]
         aspects = [round(float(a), 1) for a in np.random.uniform(0.0, 360.0, num)]
-        clays = [round(float(c), 1) for c in np.random.uniform(150.0, 300.0, num)]
-        sands = [round(float(s), 1) for s in np.random.uniform(300.0, 500.0, num)]
+        clays = [round(float(c), 1) for c in np.random.uniform(150.0, 450.0, num)]
+        sands = [round(float(s), 1) for s in np.random.uniform(200.0, 550.0, num)]
         return elevs, slopes, aspects, clays, sands
 
 

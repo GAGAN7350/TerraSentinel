@@ -35,7 +35,7 @@ def main():
     # Columns to explicitly drop from features (metadata and text columns)
     cols_to_drop = [
         "Slide", "slide_id", "cell_id", "state", "district", "history_date",
-        "coordinate_valid", "date_available"
+        "coordinate_valid", "date_available", "previous_landslides"
     ]
     
     # We must also drop ALL movement_type and material_involved columns because they are DATA LEAKAGE.

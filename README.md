@@ -10,7 +10,7 @@ By combining remote sensing, geospatial intelligence, and dashboard-based report
 
 ## Problem Statement
 
-Environmental monitoring often lacks a unified, accessible, and real-time system that can aggregate critical data for actionable decision-making. There is a growing need for smart tools that can:
+Environmental monitorng often lacks a unified, accessible, and real-time system that can aggregate critical data for actionable decision-making. There is a growing need for smart tools that can:
 
 - Monitor land and environmental changes over time
 - Detect anomalies that may signal ecological stress or degradation
