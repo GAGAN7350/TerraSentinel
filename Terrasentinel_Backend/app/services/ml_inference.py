@@ -64,8 +64,9 @@ class MLInferenceService:
         self.model_loaded = False
         self.xgb_model: Any = None
         self.explainer: Any = None                   # Phase 6: SHAP TreeExplainer
+        self.domain_bounds: dict[str, Any] = {}       # Phase 7: OOD domain bounds
         self.feature_names: list[str] = DEFAULT_FEATURES.copy()
-        self.model_version = "v1.4.0-xgboost-shap"  # Phase 6: updated model version
+        self.model_version = "v1.5.0-xgboost-ood-guardrails"  # Phase 7: updated model version
         self.imputation_params: dict[str, Any] = {}   # Phase 4: train-set medians
         self.inference_config: dict[str, Any] = {}    # Phase 5: threshold + operational params
         self.classification_threshold: float = 0.50  # Phase 5: explicit auditable default
@@ -84,6 +85,7 @@ class MLInferenceService:
         features_file    = self.model_dir / "model_features.json"
         model_file       = self.model_dir / "xgboost_risk_model.json"
         imputation_file  = self.model_dir / "imputation_params.json"
+        bounds_file      = self.model_dir / "input_domain_bounds.json"
 
         if features_file.exists():
             try:
@@ -95,8 +97,6 @@ class MLInferenceService:
                 logger.warning(f"Could not load feature definitions: {e}")
 
         # Phase 4: Load imputation parameters.
-        # These medians are fitted on the training set only and must be applied
-        # at inference time to fill any missing soil values before model prediction.
         if imputation_file.exists():
             try:
                 with open(imputation_file, "r", encoding="utf-8") as f:
@@ -111,6 +111,19 @@ class MLInferenceService:
                 f"No imputation_params.json found at {imputation_file}. "
                 "Missing soil values will not be imputed correctly."
             )
+
+        # Phase 7: Load input domain bounds for Out-Of-Distribution (OOD) guardrails
+        if bounds_file.exists():
+            try:
+                with open(bounds_file, "r", encoding="utf-8") as f:
+                    self.domain_bounds = json.load(f)
+                logger.info(
+                    f"Loaded input domain bounds for {len(self.domain_bounds)} parameters from {bounds_file}"
+                )
+            except Exception as e:
+                logger.warning(f"Could not load input_domain_bounds.json: {e}")
+        else:
+            logger.warning(f"No input_domain_bounds.json found at {bounds_file}")
 
         if model_file.exists():
             try:
@@ -136,8 +149,6 @@ class MLInferenceService:
             logger.info(f"No model file found at {model_file}, fallback heuristic will be used.")
 
         # Phase 5: Load inference configuration (threshold + operational params).
-        # The classification threshold is documented with full scientific justification.
-        # Default 0.50 is preserved if the file is missing — never silently changes.
         inference_config_file = self.model_dir / "inference_config.json"
         if inference_config_file.exists():
             try:
@@ -163,17 +174,86 @@ class MLInferenceService:
         return {
             "model_status": "HEALTHY" if self.model_loaded else "HEURISTIC_FALLBACK",
             "model_loaded": self.model_loaded,
-            "model_version": self.model_version if self.model_loaded else "v1.4.0-heuristic",
+            "model_version": self.model_version if self.model_loaded else "v1.5.0-heuristic",
             "feature_count": len(self.feature_names),
             "feature_names": self.feature_names,
             "imputation_params": self.imputation_params,
             "classification_threshold": self.classification_threshold,  # Phase 5: explicit
             "high_sensitivity_threshold": self.inference_config.get("high_sensitivity_threshold"),
             "shap_explainer_active": self.explainer is not None,  # Phase 6: TreeExplainer state
+            "domain_bounds_active": self.domain_bounds_active,   # Phase 7: OOD state
         }
 
+    @property
+    def domain_bounds_active(self) -> bool:
+        """Return True if input domain bounds are loaded and active."""
+        return len(self.domain_bounds) > 0
+
+    def validate_input_domain(self, features: dict[str, Any]) -> tuple[bool, list[str]]:
+        """Validate input features against training domain envelope. Returns (is_ood, ood_reasons)."""
+        reasons = []
+        if not self.domain_bounds:
+            return False, reasons
+
+        def _sf(val: Any) -> float | None:
+            if val is None:
+                return None
+            try:
+                v = float(val)
+                return None if math.isnan(v) else v
+            except (TypeError, ValueError):
+                return None
+
+        # 1. Spatial bounding box check (NER region: lat 21.5 - 29.5, lon 87.5 - 97.5)
+        lat = _sf(features.get("latitude"))
+        lon = _sf(features.get("longitude"))
+        bbox = self.domain_bounds.get("_ner_spatial_bbox", {})
+        if lat is not None and bbox:
+            if lat < bbox.get("lat_min", 21.5) or lat > bbox.get("lat_max", 29.5):
+                reasons.append(
+                    f"latitude ({lat:.2f} deg) outside NER regional bounds [{bbox.get('lat_min')}, {bbox.get('lat_max')}]"
+                )
+        if lon is not None and bbox:
+            if lon < bbox.get("lon_min", 87.5) or lon > bbox.get("lon_max", 97.5):
+                reasons.append(
+                    f"longitude ({lon:.2f} deg) outside NER regional bounds [{bbox.get('lon_min')}, {bbox.get('lon_max')}]"
+                )
+
+        # 2. Hard feature range and statistical outlier Z-score check
+        check_feats = [
+            "elevation_meters",
+            "soil_clay_0_5cm",
+            "soil_sand_0_5cm",
+            "terrain_slope",
+            "rainfall_7d_mm",
+        ]
+        for feat in check_feats:
+            val = _sf(features.get(feat))
+            if val is None:
+                continue
+            b = self.domain_bounds.get(feat)
+            if not b:
+                continue
+
+            min_v = b.get("min")
+            max_v = b.get("max")
+            if min_v is not None and max_v is not None:
+                if val < min_v or val > max_v:
+                    reasons.append(f"{feat} ({val:.1f}) strictly outside training range [{min_v}, {max_v}]")
+                    continue
+
+            mean_v = b.get("mean")
+            std_v = b.get("std")
+            if mean_v is not None and std_v is not None and std_v > 0:
+                z_score = abs(val - mean_v) / std_v
+                if z_score > 3.5:
+                    reasons.append(f"{feat} ({val:.1f}) is a statistical outlier (Z={z_score:.1f} > 3.5)")
+
+        is_ood = len(reasons) > 0
+        return is_ood, reasons
+
     def predict_risk(self, features: dict[str, Any]) -> dict[str, Any]:
-        """Compute risk score (0-100), risk level, confidence, trend, and feature snapshot."""
+        """Compute risk score (0-100), risk level, confidence, trend, OOD guardrail, and feature snapshot."""
         # Use _safe_float throughout: API callers may pass None for optional fields.
         def _safe_float(val: Any, default: float = 0.0) -> float:
             """Convert value to float safely, returning default if None or NaN."""
@@ -202,15 +282,11 @@ class MLInferenceService:
                 import pandas as pd
 
                 # Phase 3: Compute circular aspect encoding from raw terrain_aspect.
-                # This must match exactly what train_xgboost.py computes at training time.
                 aspect_rad = math.radians(raw_aspect)
                 aspect_sin = math.sin(aspect_rad)
                 aspect_cos = math.cos(aspect_rad)
 
                 # Phase 4: Apply median imputation for any missing soil values.
-                # Imputation values are the training-set medians loaded from imputation_params.json.
-                # This is the same transformation applied during training — making NaN handling
-                # explicit and auditable rather than relying on XGBoost's opaque NaN routing.
                 def _impute(col: str, raw_val: Any) -> float:
                     """Return imputed value if input is None/NaN, else return raw value."""
                     if raw_val is None or (isinstance(raw_val, float) and math.isnan(raw_val)):
@@ -248,12 +324,9 @@ class MLInferenceService:
                         logger.warning(f"Error computing SHAP values: {se}")
 
                 # Phase 5: Apply the configured classification threshold.
-                # Default 0.50, loaded from models/inference_config.json.
-                # Using threshold explicitly here — not the model's internal .predict() default.
                 is_landslide = prob >= self.classification_threshold
 
                 # Blend static XGBoost spatial susceptibility with dynamic precipitation telemetry
-                # prob drives the spatial component; rain_factor drives the dynamic component
                 spatial_susceptibility = prob * 100.0
                 rain_factor = min(rain_7d / 300.0, 1.0) * 35.0
                 raw_score = round(min(spatial_susceptibility * 0.80 + rain_factor, 100.0), 2)
@@ -263,9 +336,16 @@ class MLInferenceService:
         else:
             raw_score = self._heuristic_score(slope, rain_7d, elevation, clay, sand)
 
+        # Phase 7: Perform OOD Input Domain Guardrail check
+        is_ood, ood_reasons = self.validate_input_domain(features)
+
         risk_score = max(0.0, min(100.0, raw_score))
         risk_level = self.determine_risk_level(risk_score)
         confidence = self.determine_confidence(features)
+        if is_ood:
+            # Penalize confidence for OOD input data
+            confidence = round(max(0.15, confidence - 0.15 * len(ood_reasons)), 2)
+
         trend = self.determine_trend(features)
 
         # Generate structured explanation with complete feature input snapshot and SHAP values
@@ -278,7 +358,9 @@ class MLInferenceService:
             "risk_level": risk_level,
             "confidence": confidence,
             "trend": trend,
-            "model_version": self.model_version if self.model_loaded else "v1.4.0-heuristic",
+            "model_version": self.model_version if self.model_loaded else "v1.5.0-heuristic",
+            "out_of_distribution": is_ood,        # Phase 7: OOD guardrail flag
+            "ood_reasons": ood_reasons,            # Phase 7: OOD guardrail reasons list
             "explanation": explanation,
         }
 

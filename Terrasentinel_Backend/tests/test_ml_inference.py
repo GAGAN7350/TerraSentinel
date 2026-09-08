@@ -70,3 +70,34 @@ def test_shap_explainability():
     assert len(exp["shap_values"]) == len(engine.feature_names)
     assert "terrain_slope" in exp["shap_values"]
 
+
+def test_ood_domain_guardrails():
+    engine = MLInferenceService()
+    assert engine.domain_bounds_active is True
+
+    # In-domain query (NER coordinates + normal elevation)
+    in_domain = {
+        "latitude": 25.5,
+        "longitude": 91.8,
+        "elevation_meters": 1200.0,
+        "terrain_slope": 30.0,
+        "rainfall_7d_mm": 150.0,
+    }
+    res_in = engine.predict_risk(in_domain)
+    assert res_in["out_of_distribution"] is False
+    assert len(res_in["ood_reasons"]) == 0
+
+    # Out-of-domain query (Out of NER coordinates + extreme elevation)
+    ood_query = {
+        "latitude": 12.97,  # Bangalore (outside NER lat 21.5-29.5)
+        "longitude": 77.59,
+        "elevation_meters": 8500.0,  # Unphysical (outside max 4166.0m)
+        "terrain_slope": 30.0,
+        "rainfall_7d_mm": 150.0,
+    }
+    res_ood = engine.predict_risk(ood_query)
+    assert res_ood["out_of_distribution"] is True
+    assert len(res_ood["ood_reasons"]) >= 2
+    assert res_ood["confidence"] < res_in["confidence"]
+
+

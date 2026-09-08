@@ -2,8 +2,8 @@
 
 ## Model Details
 - **Model Name**: TerraSentinel XGBoost Spatial Risk Classifier
-- **Model Version**: `v1.4.0-xgboost-shap`
-- **Model Type**: Gradient Boosted Decision Trees (`xgboost.XGBClassifier`) with exact TreeSHAP explanation
+- **Model Version**: `v1.5.0-xgboost-ood-guardrails`
+- **Model Type**: Gradient Boosted Decision Trees (`xgboost.XGBClassifier`) with exact TreeSHAP & OOD Guardrails
 - **Developer**: TerraSentinel ML Engineering Team
 - **License**: Open Source (SIH 2026 Project)
 
@@ -11,7 +11,7 @@
 
 ## Intended Use
 - **Intended Purpose**: Estimation of static spatial landslide susceptibility across Northeast India (NER) based on terrain slope, elevation, soil composition, and aspect.
-- **Backend Integration**: Consumed by `MLInferenceService` within FastAPI backend to compute 0–100 Risk Scores, Risk Levels (`LOW`, `MODERATE`, `HIGH`, `CRITICAL`), raw probabilities, and SHAP-based feature attribution explanations.
+- **Backend Integration**: Consumed by `MLInferenceService` within FastAPI backend to compute 0–100 Risk Scores, Risk Levels (`LOW`, `MODERATE`, `HIGH`, `CRITICAL`), raw probabilities, SHAP feature attributions, and Out-of-Distribution (OOD) guardrail checks.
 - **NOT Intended Use**: Primary automated emergency evacuation triggering without human geological verification or local telemetry confirmation.
 
 ---
@@ -25,14 +25,6 @@
 6. `aspect_cos`: Cosine of terrain aspect angle — $\cos(\text{deg2rad}(\text{terrain\_aspect}))$ (**Phase 3 circular encoding**).
 
 > **Note (API callers)**: The API still accepts raw `terrain_aspect` (0–360°). The `aspect_sin`/`aspect_cos` transformation is computed internally by `MLInferenceService` before model inference. This preserves backward compatibility.
-
----
-
-## Training & Validation Datasets
-- **Training Dataset**: `data/processed/ml_ready_dataset.csv`
-- **Positive Samples**: 10,631 records derived from GSI field-validated landslide records.
-- **Negative Samples**: 10,000 spatially sampled background/negative locations ($\ge 2.0\text{ km}$ distance buffer).
-- **Geographic Coverage**: All 8 Northeast India (NER) states (Arunachal Pradesh, Assam, Manipur, Meghalaya, Mizoram, Nagaland, Sikkim, Tripura).
 
 ---
 
@@ -72,8 +64,22 @@
 
 ---
 
+## Out-of-Distribution (OOD) Guardrails (Phase 7 — v1.5.0)
+- **Domain Envelope**: Derived from training set distributions (`models/input_domain_bounds.json`).
+- **OOD Evaluation**:
+  - **Geographic Boundary**: Validates coordinates against the 8 NER states bounding box ($21.5^\circ - 29.5^\circ\text{N}$, $87.5^\circ - 97.5^\circ\text{E}$).
+  - **Physical Limits**: Enforces feature ranges (e.g. elevation $16 - 4166\text{m}$, slope $0 - 71^\circ$).
+  - **Statistical Outliers**: Detects features exceeding $3.5\sigma$ Z-score envelope.
+- **Output Signals**:
+  - `out_of_distribution`: `True` if any domain boundary or outlier threshold is violated.
+  - `ood_reasons`: Detailed list of domain violations.
+  - `confidence`: Dynamically penalized when input is marked OOD.
+
+---
+
 ## Limitations & Operational Scope
 1. **Static Susceptibility Baseline**: The XGBoost model evaluates static terrain susceptibility. Dynamic precipitation telemetry is scaled dynamically at the backend service API layer (`MLInferenceService`) as a **Dynamic Heuristic Risk Adjustment**.
-2. **Confidence Semantics**: Backend confidence metric represents **Data Input Completeness** (`provided_inputs / total_expected_inputs`).
-3. **Phase 3 — Circular Aspect Encoding**: `terrain_aspect` is a circular variable (0° = 360° = North). Raw linear encoding was replaced in v1.3.0 by `sin(deg2rad(aspect))` + `cos(deg2rad(aspect))`. API callers are unaffected — the transformation is internal to `MLInferenceService`.
+2. **Confidence Semantics**: Backend confidence metric incorporates **Data Input Completeness** and **OOD Penalty**.
+3. **Phase 3 — Circular Aspect Encoding**: `terrain_aspect` is a circular variable (0° = 360° = North). Raw linear encoding was replaced in v1.3.0 by `sin(deg2rad(aspect))` + `cos(deg2rad(aspect))`.
 4. **Phase 6 — SHAP Explainability**: SHAP log-odds values quantify individual feature contributions to prediction score. Positive log-odds increase landslide susceptibility; negative log-odds decrease susceptibility.
+5. **Phase 7 — OOD Guardrails**: Detects inputs outside Northeast India or outside training feature bounds to prevent silent model failure.
