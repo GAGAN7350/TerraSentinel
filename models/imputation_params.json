@@ -1,10 +1,10 @@
 {
   "soil_clay_0_5cm": {
     "strategy": "median",
-    "value": 302.0
+    "value": 295.0
   },
   "soil_sand_0_5cm": {
     "strategy": "median",
-    "value": 341.8
+    "value": 344.0
   }
 }

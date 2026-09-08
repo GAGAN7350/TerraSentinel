@@ -93,11 +93,18 @@ def generate_buffered_negatives(pos_df: pd.DataFrame, num_samples: int = NUM_NEG
 
 
 def extract_negative_features(lats: list[float], lons: list[float]) -> tuple[list, list, list, list, list]:
-    """Attempt Earth Engine feature extraction with graceful fallback."""
+    """Earth Engine feature extraction using hyper-fast multithreading."""
     num = len(lats)
     try:
         import ee
-        ee.Initialize(project="sih2026-507714", opt_url="https://earthengine-highvolume.googleapis.com")
+        import concurrent.futures
+        
+        try:
+            ee.Initialize(project="sih2026-507714", opt_url="https://earthengine-highvolume.googleapis.com")
+        except Exception:
+            ee.Authenticate()
+            ee.Initialize(project="sih2026-507714", opt_url="https://earthengine-highvolume.googleapis.com")
+            
         dem = ee.Image("USGS/SRTMGL1_003")
         terrain = ee.Terrain.products(dem)
         clay_img = ee.Image("projects/soilgrids-isric/clay_mean")
@@ -110,26 +117,50 @@ def extract_negative_features(lats: list[float], lons: list[float]) -> tuple[lis
             .addBands(sand_img.select("sand_0-5cm_mean").rename("soil_sand_0_5cm"))
         )
         
-        elevs, slopes, aspects, clays, sands = [], [], [], [], []
-        for lat, lon in zip(lats, lons):
-            pt = ee.Geometry.Point([lon, lat])
-            props = combined.sample(pt, scale=30).first().getInfo().get("properties", {})
-            elevs.append(props.get("elevation_meters"))
-            slopes.append(round(props["terrain_slope"], 3) if props.get("terrain_slope") is not None else None)
-            aspects.append(round(props["terrain_aspect"], 3) if props.get("terrain_aspect") is not None else None)
-            clays.append(props.get("soil_clay_0_5cm"))
-            sands.append(props.get("soil_sand_0_5cm"))
+        def get_pt_features(index: int, lat: float, lon: float):
+            try:
+                pt = ee.Geometry.Point([lon, lat])
+                feat = combined.sample(pt, scale=30).first()
+                if feat:
+                    props = feat.getInfo().get("properties", {})
+                    return (
+                        index,
+                        props.get("elevation_meters"),
+                        round(props["terrain_slope"], 3) if props.get("terrain_slope") is not None else None,
+                        round(props["terrain_aspect"], 3) if props.get("terrain_aspect") is not None else None,
+                        props.get("soil_clay_0_5cm"),
+                        props.get("soil_sand_0_5cm")
+                    )
+            except Exception as e:
+                pass
+            return index, None, None, None, None, None
+
+        elevs, slopes, aspects, clays, sands = [None]*num, [None]*num, [None]*num, [None]*num, [None]*num
+        
+        print(f"Starting HYPER-FAST multithreaded extraction for {num} negative samples (50 parallel connections)...")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
+            futures = {
+                executor.submit(get_pt_features, i, lats[i], lons[i]): i 
+                for i in range(num)
+            }
+            
+            for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Extracting Earth Engine Data"):
+                try:
+                    i, e, sl, a, c, s = future.result(timeout=5)
+                    elevs[i] = e
+                    slopes[i] = sl
+                    aspects[i] = a
+                    clays[i] = c
+                    sands[i] = s
+                except concurrent.futures.TimeoutError:
+                    # If it hangs for more than 5 seconds, just skip it and let the Imputation script handle it!
+                    pass
+                
         return elevs, slopes, aspects, clays, sands
+        
     except Exception as e:
-        print(f"GEE extraction unavailable ({e}), applying realistic non-landslide terrain fallback...")
-        # Physics-aligned realistic terrain fallback for negative sample features
-        np.random.seed(42)
-        elevs = [round(float(e), 1) for e in np.random.uniform(100.0, 2500.0, num)]
-        slopes = [round(float(s), 2) for s in np.random.uniform(1.0, 45.0, num)]
-        aspects = [round(float(a), 1) for a in np.random.uniform(0.0, 360.0, num)]
-        clays = [round(float(c), 1) for c in np.random.uniform(150.0, 450.0, num)]
-        sands = [round(float(s), 1) for s in np.random.uniform(200.0, 550.0, num)]
-        return elevs, slopes, aspects, clays, sands
+        print(f"FATAL ERROR: GEE extraction completely failed ({e}). We cannot proceed without real data. Halting.")
+        raise
 
 
 if __name__ == "__main__":
