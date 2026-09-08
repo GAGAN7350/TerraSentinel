@@ -114,7 +114,11 @@ class MLInferenceService:
                 input_dict = {col: features.get(col, 0.0) for col in self.feature_names}
                 df = pd.DataFrame([input_dict])[self.feature_names]
                 prob = float(self.xgb_model.predict_proba(df)[0][1])
-                raw_score = round(prob * 100.0, 2)
+                
+                # Blend static XGBoost spatial susceptibility with dynamic precipitation telemetry
+                spatial_susceptibility = prob * 100.0
+                rain_factor = min(rain_7d / 300.0, 1.0) * 35.0
+                raw_score = round(min(spatial_susceptibility * 0.80 + rain_factor, 100.0), 2)
             except Exception as e:
                 logger.error(f"Error during XGBoost prediction, falling back to heuristic: {e}")
                 raw_score = self._heuristic_score(slope, rain_7d, elevation, clay, sand)
