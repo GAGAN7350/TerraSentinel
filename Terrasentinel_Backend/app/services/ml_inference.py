@@ -63,8 +63,9 @@ class MLInferenceService:
 
         self.model_loaded = False
         self.xgb_model: Any = None
+        self.explainer: Any = None                   # Phase 6: SHAP TreeExplainer
         self.feature_names: list[str] = DEFAULT_FEATURES.copy()
-        self.model_version = "v1.4.0-xgboost-imputed"
+        self.model_version = "v1.4.0-xgboost-shap"  # Phase 6: updated model version
         self.imputation_params: dict[str, Any] = {}   # Phase 4: train-set medians
         self.inference_config: dict[str, Any] = {}    # Phase 5: threshold + operational params
         self.classification_threshold: float = 0.50  # Phase 5: explicit auditable default
@@ -114,6 +115,7 @@ class MLInferenceService:
         if model_file.exists():
             try:
                 from xgboost import XGBClassifier
+                import shap
 
                 model = XGBClassifier()
                 model.load_model(str(model_file))
@@ -121,6 +123,13 @@ class MLInferenceService:
                 MLInferenceService._model_cache = model
                 self.model_loaded = True
                 logger.info(f"Successfully loaded XGBoost risk model from {model_file}")
+
+                # Phase 6: Initialize TreeExplainer for exact SHAP feature attribution
+                try:
+                    self.explainer = shap.TreeExplainer(model)
+                    logger.info("Successfully initialized SHAP TreeExplainer")
+                except Exception as se:
+                    logger.warning(f"Could not initialize SHAP TreeExplainer: {se}")
             except Exception as e:
                 logger.warning(f"Could not load XGBoost model from {model_file}: {e}")
         else:
@@ -160,6 +169,7 @@ class MLInferenceService:
             "imputation_params": self.imputation_params,
             "classification_threshold": self.classification_threshold,  # Phase 5: explicit
             "high_sensitivity_threshold": self.inference_config.get("high_sensitivity_threshold"),
+            "shap_explainer_active": self.explainer is not None,  # Phase 6: TreeExplainer state
         }
 
     def predict_risk(self, features: dict[str, Any]) -> dict[str, Any]:
@@ -183,8 +193,12 @@ class MLInferenceService:
         raw_aspect = _safe_float(features.get("terrain_aspect"))
 
         prob: float | None = None  # Phase 5: initialized here so it's always in scope
+        shap_values_dict: dict[str, float] | None = None
+        shap_base_value: float | None = None
+
         if self.model_loaded and self.xgb_model is not None:
             try:
+                import numpy as np
                 import pandas as pd
 
                 # Phase 3: Compute circular aspect encoding from raw terrain_aspect.
@@ -219,6 +233,20 @@ class MLInferenceService:
                 df = pd.DataFrame([model_input])[self.feature_names]
                 prob = float(self.xgb_model.predict_proba(df)[0][1])
 
+                # Phase 6: Compute SHAP values using TreeExplainer
+                if self.explainer is not None:
+                    try:
+                        raw_shap = self.explainer.shap_values(df)[0]
+                        b_val = self.explainer.expected_value
+                        b_float = float(b_val[0] if isinstance(b_val, (list, np.ndarray)) else b_val)
+                        shap_base_value = round(b_float, 4)
+                        shap_values_dict = {
+                            col: round(float(val), 4)
+                            for col, val in zip(self.feature_names, raw_shap)
+                        }
+                    except Exception as se:
+                        logger.warning(f"Error computing SHAP values: {se}")
+
                 # Phase 5: Apply the configured classification threshold.
                 # Default 0.50, loaded from models/inference_config.json.
                 # Using threshold explicitly here — not the model's internal .predict() default.
@@ -240,8 +268,10 @@ class MLInferenceService:
         confidence = self.determine_confidence(features)
         trend = self.determine_trend(features)
 
-        # Generate structured explanation with complete feature input snapshot
-        explanation = self.generate_explanation(features, risk_score)
+        # Generate structured explanation with complete feature input snapshot and SHAP values
+        explanation = self.generate_explanation(
+            features, risk_score, shap_values=shap_values_dict, shap_base_value=shap_base_value
+        )
 
         result: dict[str, Any] = {
             "risk_score": risk_score,
@@ -298,7 +328,12 @@ class MLInferenceService:
         return RiskTrend.STABLE
 
     @staticmethod
-    def generate_explanation(features: dict[str, Any], score: float) -> dict[str, Any]:
+    def generate_explanation(
+        features: dict[str, Any],
+        score: float,
+        shap_values: dict[str, float] | None = None,
+        shap_base_value: float | None = None,
+    ) -> dict[str, Any]:
         def _sf(val: Any, default: float = 0.0) -> float:
             """None-safe float conversion."""
             if val is None:
@@ -314,12 +349,36 @@ class MLInferenceService:
         clay    = _sf(features.get("soil_clay_0_5cm"))
 
         factors = []
-        if slope >= 30.0:
-            factors.append(f"Steep terrain slope ({slope:.1f} deg)")
-        if rain_7d >= 100.0:
-            factors.append(f"Heavy 7-day cumulative rainfall ({rain_7d:.1f} mm)")
-        if clay >= 300.0:
-            factors.append(f"High clay soil composition ({clay:.1f} g/kg)")
+        if shap_values:
+            FEATURE_LABELS = {
+                "terrain_slope": "Terrain slope",
+                "soil_clay_0_5cm": "Clay soil composition",
+                "soil_sand_0_5cm": "Sand soil composition",
+                "elevation_meters": "Elevation",
+                "aspect_sin": "Terrain aspect (sin)",
+                "aspect_cos": "Terrain aspect (cos)",
+            }
+            # Sort features by absolute SHAP log-odds impact descending
+            sorted_shap = sorted(shap_values.items(), key=lambda item: abs(item[1]), reverse=True)
+            for col, val in sorted_shap:
+                if abs(val) < 0.01:
+                    continue
+                label = FEATURE_LABELS.get(col, col.replace("_", " ").title())
+                if val > 0:
+                    factors.append(f"{label} (+{val:.2f} log-odds risk contribution)")
+                else:
+                    factors.append(f"{label} ({val:.2f} log-odds risk reduction)")
+
+            if rain_7d >= 50.0:
+                factors.insert(0, f"Heavy 7-day cumulative rainfall ({rain_7d:.1f} mm)")
+        else:
+            if slope >= 30.0:
+                factors.append(f"Steep terrain slope ({slope:.1f} deg)")
+            if rain_7d >= 100.0:
+                factors.append(f"Heavy 7-day cumulative rainfall ({rain_7d:.1f} mm)")
+            if clay >= 300.0:
+                factors.append(f"High clay soil composition ({clay:.1f} g/kg)")
+
         if not factors:
             factors.append("Low slope gradient and minimal recent precipitation")
 
@@ -330,10 +389,17 @@ class MLInferenceService:
             if v is not None
         }
 
-        return {
+        res_explanation: dict[str, Any] = {
             "primary_drivers": factors,
             "slope_contribution": round(min(slope / 60.0, 1.0) * 45.0, 1),
             "precipitation_contribution": round(min(rain_7d / 300.0, 1.0) * 35.0, 1),
             "soil_contribution": round(min(clay / 500.0, 1.0) * 20.0, 1),
             "feature_snapshot": feature_snapshot,
         }
+
+        if shap_values is not None:
+            res_explanation["shap_values"] = shap_values
+            res_explanation["shap_base_value"] = shap_base_value
+            res_explanation["explainability_method"] = "TreeSHAP (exact log-odds attribution)"
+
+        return res_explanation

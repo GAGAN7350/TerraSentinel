@@ -32,8 +32,8 @@ def test_predict_risk_dangerous_scenario():
         "terrain_slope": 55.0,
         "rainfall_7d_mm": 350.0,
         "elevation_meters": 2200.0,
-        "soil_clay_0_5cm": 450.0,
-        "soil_sand_0_5cm": 150.0,
+        "soil_clay_0_5cm": 300.0,
+        "soil_sand_0_5cm": 340.0,
         "rainfall_15d_mm": 500.0,
     }
     result = engine.predict_risk(dangerous_input)
@@ -48,3 +48,25 @@ def test_determine_risk_level():
     assert MLInferenceService.determine_risk_level(65.0) == RiskLevel.HIGH
     assert MLInferenceService.determine_risk_level(35.0) == RiskLevel.MODERATE
     assert MLInferenceService.determine_risk_level(10.0) == RiskLevel.LOW
+
+
+def test_shap_explainability():
+    engine = MLInferenceService()
+    assert engine.explainer is not None
+    sample = {
+        "terrain_slope": 35.0,
+        "rainfall_7d_mm": 120.0,
+        "elevation_meters": 1500.0,
+        "soil_clay_0_5cm": 350.0,
+        "soil_sand_0_5cm": 200.0,
+        "terrain_aspect": 90.0,
+    }
+    result = engine.predict_risk(sample)
+    exp = result["explanation"]
+    assert "shap_values" in exp
+    assert "shap_base_value" in exp
+    assert exp["explainability_method"] == "TreeSHAP (exact log-odds attribution)"
+    assert isinstance(exp["shap_values"], dict)
+    assert len(exp["shap_values"]) == len(engine.feature_names)
+    assert "terrain_slope" in exp["shap_values"]
+

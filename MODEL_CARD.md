@@ -2,8 +2,8 @@
 
 ## Model Details
 - **Model Name**: TerraSentinel XGBoost Spatial Risk Classifier
-- **Model Version**: `v1.3.0-xgboost-circular-aspect`
-- **Model Type**: Gradient Boosted Decision Trees (`xgboost.XGBClassifier`)
+- **Model Version**: `v1.4.0-xgboost-shap`
+- **Model Type**: Gradient Boosted Decision Trees (`xgboost.XGBClassifier`) with exact TreeSHAP explanation
 - **Developer**: TerraSentinel ML Engineering Team
 - **License**: Open Source (SIH 2026 Project)
 
@@ -11,7 +11,7 @@
 
 ## Intended Use
 - **Intended Purpose**: Estimation of static spatial landslide susceptibility across Northeast India (NER) based on terrain slope, elevation, soil composition, and aspect.
-- **Backend Integration**: Consumed by `MLInferenceService` within FastAPI backend to compute 0–100 Risk Scores, Risk Levels (`LOW`, `MODERATE`, `HIGH`, `CRITICAL`), and feature attribution explanations.
+- **Backend Integration**: Consumed by `MLInferenceService` within FastAPI backend to compute 0–100 Risk Scores, Risk Levels (`LOW`, `MODERATE`, `HIGH`, `CRITICAL`), raw probabilities, and SHAP-based feature attribution explanations.
 - **NOT Intended Use**: Primary automated emergency evacuation triggering without human geological verification or local telemetry confirmation.
 
 ---
@@ -62,7 +62,18 @@
 
 ---
 
+## Explainability & SHAP Integration (Phase 6 — v1.4.0)
+- **Method**: Exact TreeSHAP (`shap.TreeExplainer`) integrated directly into `MLInferenceService`.
+- **Explainability Output**: Each risk prediction includes:
+  - `shap_values`: Exact log-odds contribution per feature (`elevation_meters`, `soil_clay_0_5cm`, `soil_sand_0_5cm`, `terrain_slope`, `aspect_sin`, `aspect_cos`).
+  - `shap_base_value`: Expected log-odds baseline (1.2249).
+  - `explainability_method`: `"TreeSHAP (exact log-odds attribution)"`.
+  - `primary_drivers`: Ranked human-readable driver list derived directly from top absolute SHAP values.
+
+---
+
 ## Limitations & Operational Scope
 1. **Static Susceptibility Baseline**: The XGBoost model evaluates static terrain susceptibility. Dynamic precipitation telemetry is scaled dynamically at the backend service API layer (`MLInferenceService`) as a **Dynamic Heuristic Risk Adjustment**.
 2. **Confidence Semantics**: Backend confidence metric represents **Data Input Completeness** (`provided_inputs / total_expected_inputs`).
 3. **Phase 3 — Circular Aspect Encoding**: `terrain_aspect` is a circular variable (0° = 360° = North). Raw linear encoding was replaced in v1.3.0 by `sin(deg2rad(aspect))` + `cos(deg2rad(aspect))`. API callers are unaffected — the transformation is internal to `MLInferenceService`.
+4. **Phase 6 — SHAP Explainability**: SHAP log-odds values quantify individual feature contributions to prediction score. Positive log-odds increase landslide susceptibility; negative log-odds decrease susceptibility.
