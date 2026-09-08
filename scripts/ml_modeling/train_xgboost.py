@@ -1,4 +1,5 @@
 import json
+import math
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -26,6 +27,15 @@ def main():
     df = pd.read_csv(DATA_PATH)
     print(f"Loaded dataset successfully. Shape: {df.shape}")
 
+    # --- Phase 3: Circular Aspect Encoding ---
+    # terrain_aspect is a CIRCULAR variable (0° == 360° == North).
+    # Raw linear encoding destroys this geometry. We replace it with sin/cos projections.
+    print("\n--- Phase 3: Computing circular aspect encoding (sin/cos) ---")
+    df["aspect_sin"] = np.sin(np.deg2rad(df["terrain_aspect"]))
+    df["aspect_cos"] = np.cos(np.deg2rad(df["terrain_aspect"]))
+    print(f"  aspect_sin range: [{df['aspect_sin'].min():.4f}, {df['aspect_sin'].max():.4f}]")
+    print(f"  aspect_cos range: [{df['aspect_cos'].min():.4f}, {df['aspect_cos'].max():.4f}]")
+
     print("\n--- Step 2: Preparing Features (X) and Target (y) ---")
     if "Slide" not in df.columns:
         raise ValueError("Target column 'Slide' not found in dataset!")
@@ -45,6 +55,10 @@ def main():
     # Drop Latitude and Longitude to prevent the model from just memorizing the map.
     # We want it to learn the physics (Slope + Rain), not just the coordinates!
     cols_to_drop.extend(["latitude", "longitude"])
+
+    # Drop raw terrain_aspect — replaced by aspect_sin and aspect_cos (Phase 3 circular encoding).
+    # Raw 0-360° linear representation is geometrically incorrect for a circular variable.
+    cols_to_drop.append("terrain_aspect")
     
     # DROP TEMPORAL FEATURES (Rainfall, Moisture, NDVI)
     # The negative samples didn't have dates, so their rainfall was imputed using the median of the landslides!
@@ -66,6 +80,7 @@ def main():
     print(f"Train samples: {len(X_train)} | Test samples: {len(X_test)}")
 
     print("\n--- Step 4: Training XGBClassifier (Paranoid Mode for High Recall) ---")
+    print(f"  Final feature set ({len(X.columns)}): {list(X.columns)}")
     model = XGBClassifier(
         n_estimators=300,
         max_depth=6,
@@ -119,11 +134,14 @@ def main():
     model.save_model(str(MODEL_OUTPUT_PATH))
     print(f"Model saved successfully to {MODEL_OUTPUT_PATH}")
 
-    # Also save feature list for downstream inference
+    # Save feature list for downstream inference
+    # NOTE: features now include aspect_sin and aspect_cos (Phase 3 circular encoding)
+    # The inference layer must compute these from raw terrain_aspect before calling the model.
     feature_metadata_path = MODELS_DIR / "model_features.json"
     with open(feature_metadata_path, "w") as f:
         json.dump(list(X.columns), f, indent=2)
     print(f"Feature names saved to {feature_metadata_path}")
+    print(f"  Model features: {list(X.columns)}")
 
     return {
         "accuracy": acc,

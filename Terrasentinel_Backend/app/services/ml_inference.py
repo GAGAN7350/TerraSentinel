@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +12,21 @@ from app.models.risk import RiskLevel, RiskTrend
 
 logger = logging.getLogger(__name__)
 
+# Static susceptibility features fed to the XGBoost model.
+# Phase 3: terrain_aspect is encoded as sin/cos at inference time (circular variable).
+# API callers still supply raw terrain_aspect (0-360°); the encoding is internal.
 DEFAULT_FEATURES = [
+    "elevation_meters",
+    "soil_clay_0_5cm",
+    "soil_sand_0_5cm",
+    "terrain_slope",
+    "aspect_sin",   # sin(deg2rad(terrain_aspect)) — Phase 3 circular encoding
+    "aspect_cos",   # cos(deg2rad(terrain_aspect)) — Phase 3 circular encoding
+]
+
+# Raw API input features (used for confidence scoring and feature snapshot).
+# terrain_aspect is listed here because callers supply it; it is transformed before model inference.
+RAW_STATIC_FEATURES = [
     "elevation_meters",
     "soil_clay_0_5cm",
     "soil_sand_0_5cm",
@@ -49,7 +64,7 @@ class MLInferenceService:
         self.model_loaded = False
         self.xgb_model: Any = None
         self.feature_names: list[str] = DEFAULT_FEATURES.copy()
-        self.model_version = "v1.2.0-xgboost"
+        self.model_version = "v1.3.0-xgboost-circular-aspect"
 
         if model_dir is None:
             base = Path(__file__).resolve().parents[3]
@@ -106,15 +121,31 @@ class MLInferenceService:
         elevation = float(features.get("elevation_meters", 0.0))
         clay = float(features.get("soil_clay_0_5cm", 0.0))
         sand = float(features.get("soil_sand_0_5cm", 0.0))
+        raw_aspect = float(features.get("terrain_aspect", 0.0))
 
         if self.model_loaded and self.xgb_model is not None:
             try:
                 import pandas as pd
 
-                input_dict = {col: features.get(col, 0.0) for col in self.feature_names}
-                df = pd.DataFrame([input_dict])[self.feature_names]
+                # Phase 3: Compute circular aspect encoding from raw terrain_aspect.
+                # This must match exactly what train_xgboost.py computes at training time.
+                aspect_rad = math.radians(raw_aspect)
+                aspect_sin = math.sin(aspect_rad)
+                aspect_cos = math.cos(aspect_rad)
+
+                # Build model input using the exact feature names from model_features.json
+                model_input: dict[str, Any] = {}
+                for col in self.feature_names:
+                    if col == "aspect_sin":
+                        model_input[col] = aspect_sin
+                    elif col == "aspect_cos":
+                        model_input[col] = aspect_cos
+                    else:
+                        model_input[col] = features.get(col, 0.0)
+
+                df = pd.DataFrame([model_input])[self.feature_names]
                 prob = float(self.xgb_model.predict_proba(df)[0][1])
-                
+
                 # Blend static XGBoost spatial susceptibility with dynamic precipitation telemetry
                 spatial_susceptibility = prob * 100.0
                 rain_factor = min(rain_7d / 300.0, 1.0) * 35.0
@@ -164,7 +195,7 @@ class MLInferenceService:
     @staticmethod
     def determine_confidence(features: dict[str, Any]) -> float:
         provided = sum(1 for v in features.values() if v is not None)
-        total = len(DEFAULT_FEATURES) + len(TELEMETRY_FEATURES)
+        total = len(RAW_STATIC_FEATURES) + len(TELEMETRY_FEATURES)
         return min(round(0.60 + (provided / total) * 0.38, 2), 0.98)
 
     @staticmethod
