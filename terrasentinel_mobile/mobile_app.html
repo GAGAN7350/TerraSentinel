@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>TerraSentinel — Northeast Landslide Watch</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
+    
+    /* Deep Mountain Basalt & Environmental Earth Theme */
+    :root {
+      --bg-dark: #070B14;
+      --surface-card: #0E1626;
+      --surface-panel: #131E33;
+      --border-earth: #1E2D4A;
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --moss-green: #10B981;
+      --moss-emerald: #059669;
+      --ochre-amber: #F59E0B;
+      --terra-red: #EF4444;
+      --deep-red: #B91C1C;
+      --water-cyan: #06B6D4;
+      --sky-blue: #38BDF8;
+      --text-main: #F1F5F9;
+      --text-muted: #94A3B8;
+      --text-dim: #64748B;
+    }
+
+    body {
+      background: var(--bg-dark);
+      color: var(--text-main);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background-image: 
+        radial-gradient(circle at 20% 15%, rgba(16, 185, 129, 0.05) 0%, transparent 40%),
+        radial-gradient(circle at 80% 80%, rgba(6, 182, 212, 0.04) 0%, transparent 45%);
+    }
+
+    /* Environmental Top Navigation */
+    header {
+      background: rgba(14, 22, 38, 0.95);
+      backdrop-filter: blur(12px);
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-earth);
+      z-index: 100;
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-logo-badge {
+      width: 34px;
+      height: 34px;
+      background: linear-gradient(135deg, #0284C7, #0D9488);
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      color: white;
+      font-size: 15px;
+      box-shadow: 0 2px 8px rgba(2, 132, 199, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    .brand-text-col {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .brand-name {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+      color: #FFFFFF;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .brand-name span {
+      color: var(--sky-blue);
+    }
+
+    .brand-tag {
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      color: var(--moss-green);
+      text-transform: uppercase;
+    }
+
+    .user-profile-badge {
+      background: var(--surface-panel);
+      padding: 5px 10px;
+      border-radius: 20px;
+      border: 1px solid var(--border-earth);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+
+    .user-avatar-mini {
+      width: 22px;
+      height: 22px;
+      background: #059669;
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: bold;
+    }
+
+    .user-profile-name {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: #E2E8F0;
+      max-width: 85px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Content Area */
+    .content-area {
+      flex: 1;
+      position: relative;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .tab-view {
+      display: none;
+      min-height: 100%;
+      padding-bottom: 30px;
+    }
+
+    .tab-view.active {
+      display: block;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+      min-height: calc(100vh - 126px);
+      background: #0B132B;
+    }
+
+    /* Hero Banner matching photos */
+    .hero-banner {
+      position: relative;
+      padding: 20px 16px;
+      background: 
+        linear-gradient(180deg, rgba(7, 11, 20, 0.4) 0%, rgba(7, 11, 20, 0.95) 100%),
+        url('https://images.unsplash.com/photo-1506744038136-46273834b3fb?q=80&w=1000&auto=format&fit=crop') center/cover;
+      border-bottom: 1px solid var(--border-earth);
+    }
+
+    .hero-meta-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: var(--moss-green);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      padding: 3px 8px;
+      border-radius: 12px;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+    }
+
+    .hero-heading {
+      font-size: 20px;
+      font-weight: 800;
+      line-height: 1.25;
+      color: #FFFFFF;
+      margin-bottom: 6px;
+    }
+
+    .hero-heading span {
+      color: var(--sky-blue);
+    }
+
+    .hero-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+
+    /* Key Indicators Strip (from Photo 2) */
+    .stat-strip {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      padding: 12px 14px 4px;
+    }
+
+    .stat-card {
+      background: var(--surface-card);
+      border: 1px solid var(--border-earth);
+      border-radius: 12px;
+      padding: 10px 12px;
+    }
+
+    .stat-label {
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-value {
+      font-size: 18px;
+      font-weight: 900;
+      color: #FFFFFF;
+      margin-top: 2px;
+    }
+
+    .stat-value.highlight-amber { color: var(--ochre-amber); }
+    .stat-value.highlight-red { color: var(--terra-red); }
+    .stat-value.highlight-green { color: var(--moss-green); }
+
+    /* Environmental Geological Card */
+    .geo-card {
+      background: var(--surface-card);
+      border: 1px solid var(--border-earth);
+      border-radius: 16px;
+      margin: 12px 14px;
+      padding: 16px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    }
+
+    .geo-card-title {
+      font-size: 13.5px;
+      font-weight: 800;
+      color: #E2E8F0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    /* Route Selector Pills */
+    .pills-scroll {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 6px 14px 12px;
+      scrollbar-width: none;
+    }
+    .pills-scroll::-webkit-scrollbar { display: none; }
+
+    .route-pill {
+      background: var(--surface-panel);
+      border: 1px solid var(--border-earth);
+      color: var(--text-muted);
+      padding: 7px 14px;
+      border-radius: 20px;
+      font-size: 11.5px;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .route-pill.active {
+      background: linear-gradient(135deg, #0284C7, #0F766E);
+      color: #FFFFFF;
+      border-color: var(--sky-blue);
+      box-shadow: 0 2px 8px rgba(2, 132, 199, 0.3);
+    }
+
+    /* Susceptibility Rate Meter (Clean & Natural) */
+    .meter-container {
+      background: linear-gradient(145deg, #101B2E, #0A1220);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 18px;
+      padding: 18px;
+      text-align: center;
+    }
+
+    .meter-circle {
+      width: 124px;
+      height: 124px;
+      border-radius: 50%;
+      margin: 8px auto 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border: 6px solid var(--ochre-amber);
+      background: radial-gradient(circle, rgba(245, 158, 11, 0.12) 0%, rgba(10, 18, 32, 0.8) 70%);
+      transition: all 0.3s ease;
+    }
+
+    .meter-rate {
+      font-size: 34px;
+      font-weight: 900;
+      color: #FFFFFF;
+      letter-spacing: -1px;
+    }
+
+    .meter-sub {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .meter-status-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .status-critical { background: rgba(239, 68, 68, 0.18); color: #EF4444; border: 1px solid #EF4444; }
+    .status-high { background: rgba(245, 158, 11, 0.18); color: #F59E0B; border: 1px solid #F59E0B; }
+    .status-moderate { background: rgba(234, 179, 8, 0.18); color: #EAB308; border: 1px solid #EAB308; }
+    .status-safe { background: rgba(16, 185, 129, 0.18); color: #10B981; border: 1px solid #10B981; }
+
+    .meter-progress-track {
+      width: 100%;
+      height: 8px;
+      background: #090F1C;
+      border-radius: 6px;
+      overflow: hidden;
+      margin: 12px 0 6px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .meter-progress-bar {
+      height: 100%;
+      border-radius: 6px;
+      transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .meter-scale-text {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: var(--text-dim);
+      font-weight: 600;
+    }
+
+    /* Environmental Telemetry Grid */
+    .telemetry-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .telemetry-item {
+      background: #09101F;
+      border: 1px solid var(--border-earth);
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .telemetry-label {
+      font-size: 10.5px;
+      color: var(--text-muted);
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .telemetry-val {
+      font-size: 16px;
+      font-weight: 800;
+      color: #FFFFFF;
+    }
+
+    .telemetry-tag {
+      font-size: 10px;
+      font-weight: 600;
+      margin-top: 2px;
+    }
+
+    /* Advisory Bullet */
+    .advisory-box {
+      background: rgba(15, 23, 42, 0.8);
+      border-left: 3px solid var(--ochre-amber);
+      border-radius: 0 10px 10px 0;
+      padding: 10px 12px;
+      font-size: 12px;
+      color: #CBD5E1;
+      line-height: 1.5;
+      margin-top: 10px;
+    }
+
+    /* Bottom Navigation Bar */
+    .bottom-nav {
+      background: rgba(14, 22, 38, 0.98);
+      backdrop-filter: blur(16px);
+      height: 62px;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      border-top: 1px solid var(--border-earth);
+      position: relative;
+      z-index: 1000;
+    }
+
+    .nav-tab-btn {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-size: 10.5px;
+      font-weight: 700;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      cursor: pointer;
+      flex: 1;
+      transition: color 0.2s;
+    }
+
+    .nav-tab-btn.active {
+      color: var(--sky-blue);
+    }
+
+    .nav-tab-btn .nav-icon {
+      font-size: 18px;
+    }
+
+    .sos-central-btn {
+      background: linear-gradient(135deg, #DC2626, #991B1B);
+      color: white;
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 900;
+      border: 2px solid #FACC15;
+      box-shadow: 0 4px 16px rgba(220, 38, 38, 0.45);
+      cursor: pointer;
+      margin-top: -20px;
+    }
+
+    /* Onboarding / Sign-In Modal */
+    .auth-overlay {
+      position: fixed;
+      inset: 0;
+      background: #070B14;
+      z-index: 5000;
+      display: flex;
+      flex-direction: column;
+      padding: 24px 18px;
+      overflow-y: auto;
+      background-image: 
+        radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 90% 80%, rgba(6, 182, 212, 0.06) 0%, transparent 45%);
+    }
+
+    .auth-overlay.hidden { display: none; }
+
+    .auth-brand-center {
+      text-align: center;
+      margin: 28px 0 20px;
+    }
+
+    .auth-logo-large {
+      width: 54px;
+      height: 54px;
+      background: linear-gradient(135deg, #0284C7, #0D9488);
+      border-radius: 16px;
+      margin: 0 auto 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      box-shadow: 0 4px 20px rgba(2, 132, 199, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .auth-title {
+      font-size: 22px;
+      font-weight: 900;
+      color: #FFFFFF;
+      letter-spacing: -0.5px;
+    }
+
+    .auth-title span { color: var(--sky-blue); }
+
+    .auth-subtitle {
+      font-size: 12.5px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .auth-card {
+      background: var(--surface-card);
+      border: 1px solid var(--border-earth);
+      border-radius: 18px;
+      padding: 20px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    }
+
+    .form-label {
+      display: block;
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--text-muted);
+      margin-bottom: 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    .form-field {
+      width: 100%;
+      background: #09101F;
+      border: 1px solid var(--border-earth);
+      color: #FFFFFF;
+      padding: 11px 14px;
+      border-radius: 10px;
+      font-size: 13.5px;
+      margin-bottom: 12px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .form-field:focus {
+      border-color: var(--sky-blue);
+    }
+
+    .gender-pill-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .gender-pill-btn {
+      flex: 1;
+      background: #09101F;
+      border: 1px solid var(--border-earth);
+      color: var(--text-muted);
+      padding: 9px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+      cursor: pointer;
+    }
+
+    .gender-pill-btn.active {
+      background: rgba(6, 182, 212, 0.15);
+      color: var(--sky-blue);
+      border-color: var(--sky-blue);
+    }
+
+    .btn-action-primary {
+      background: linear-gradient(135deg, #0284C7, #0D9488);
+      color: white;
+      border: none;
+      padding: 13px;
+      border-radius: 12px;
+      width: 100%;
+      font-weight: 800;
+      font-size: 13.5px;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(2, 132, 199, 0.3);
+      margin-top: 4px;
+    }
+
+    /* SOS Modal */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.85);
+      z-index: 2000;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+    .modal-backdrop.active { display: flex; }
+
+    .modal-content-box {
+      background: var(--surface-card);
+      border: 1px solid var(--border-earth);
+      border-radius: 20px;
+      padding: 20px;
+      width: 100%;
+      max-width: 390px;
+    }
+
+    .sos-call-btn {
+      background: #09101F;
+      border: 1px solid var(--border-earth);
+      padding: 10px 14px;
+      border-radius: 10px;
+      color: #FFFFFF;
+      text-decoration: none;
+      font-size: 12.5px;
+      font-weight: 700;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .sos-dispatch-banner-btn {
+      background: linear-gradient(135deg, #DC2626, #991B1B);
+      color: white;
+      border: 2px solid #FACC15;
+      padding: 13px;
+      border-radius: 12px;
+      width: 100%;
+      font-weight: 900;
+      font-size: 13px;
+      cursor: pointer;
+      letter-spacing: 0.5px;
+      margin: 10px 0 14px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ================= AUTHENTICATION / ONBOARDING SCREEN ================= -->
+  <div class="auth-overlay" id="authScreen">
+    <div class="auth-brand-center">
+      <div class="auth-logo-large">🏔️</div>
+      <div class="auth-title">Terra<span>Sentinel</span></div>
+      <div class="auth-subtitle">North-East India Landslide Early-Warning Sentinel</div>
+    </div>
+
+    <!-- Step 1: Citizen Profile Setup -->
+    <div class="auth-card" id="authStep1">
+      <div style="font-size:14px; font-weight:800; color:var(--sky-blue); margin-bottom:14px; text-transform:uppercase; letter-spacing:0.5px;">Citizen Registration / Sign In</div>
+
+      <label class="form-label">Mobile Phone Number</label>
+      <div style="display:flex; gap:8px; margin-bottom:12px;">
+        <div style="width:52px; background:#09101F; border:1px solid var(--border-earth); color:var(--text-muted); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700;">+91</div>
+        <input type="tel" id="inpPhone" class="form-field" style="margin-bottom:0; flex:1;" placeholder="10-digit phone number" maxlength="10" inputmode="numeric" oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 10)" />
+      </div>
+
+      <label class="form-label">Full Name</label>
+      <input type="text" id="inpName" class="form-field" placeholder="e.g. Tenzing Norbu / Ananya Sharma" />
+
+      <div style="display:flex; gap:10px;">
+        <!-- Age Input: Strictly positive, blocking minus sign and negative numbers -->
+        <div style="flex:1;">
+          <label class="form-label">Age</label>
+          <input 
+            type="text" 
+            id="inpAge" 
+            class="form-field" 
+            placeholder="Years" 
+            inputmode="numeric" 
+            pattern="[0-9]*" 
+            maxlength="3" 
+            onkeydown="if(event.key === '-' || event.key === '+' || event.key === 'e' || event.key === '.') event.preventDefault();"
+            oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 3)" 
+          />
+        </div>
+        <div style="flex:2;">
+          <label class="form-label">Gender</label>
+          <div class="gender-pill-row">
+            <div class="gender-pill-btn active" onclick="setGender('Male', this)">Male</div>
+            <div class="gender-pill-btn" onclick="setGender('Female', this)">Female</div>
+            <div class="gender-pill-btn" onclick="setGender('Other', this)">Other</div>
+          </div>
+        </div>
+      </div>
+
+      <label class="form-label">State (NER Sector)</label>
+      <select id="inpState" class="form-field" onchange="updateDistricts()">
+        <option value="Sikkim">Sikkim</option>
+        <option value="Meghalaya">Meghalaya</option>
+        <option value="Arunachal Pradesh">Arunachal Pradesh</option>
+        <option value="Assam">Assam</option>
+        <option value="Mizoram">Mizoram</option>
+        <option value="Nagaland">Nagaland</option>
+        <option value="Manipur">Manipur</option>
+        <option value="Tripura">Tripura</option>
+      </select>
+
+      <label class="form-label">District / Station</label>
+      <select id="inpDistrict" class="form-field">
+        <!-- populated dynamically -->
+      </select>
+
+      <button class="btn-action-primary" onclick="sendOtp()">VERIFY VIA OTP</button>
+    </div>
+
+    <!-- Step 2: OTP Verification -->
+    <div class="auth-card" id="authStep2" style="display:none;">
+      <div style="font-size:14px; font-weight:800; color:var(--sky-blue); margin-bottom:6px; text-transform:uppercase;">Enter Security Code</div>
+      <p style="color:var(--text-muted); font-size:12px; margin-bottom:16px;">We sent a 4-digit code to <span id="displayPhone" style="color:white; font-weight:bold;"></span></p>
+
+      <input 
+        type="text" 
+        id="otpCode" 
+        class="form-field" 
+        style="text-align:center; font-size:26px; font-weight:900; letter-spacing:14px; padding:14px; border-color:var(--sky-blue);" 
+        maxlength="4" 
+        value="4821" 
+        inputmode="numeric" 
+      />
+
+      <button class="btn-action-primary" onclick="completeSignIn()">CONFIRM & ENTER APP</button>
+      <div style="text-align:center; margin-top:14px;">
+        <button style="background:none; border:none; color:var(--sky-blue); font-size:12px; font-weight:600; cursor:pointer;" onclick="resendOtp()">Resend OTP Code</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ================= TOP APP HEADER ================= -->
+  <header>
+    <div class="brand-group">
+      <div class="brand-logo-badge">Te</div>
+      <div class="brand-text-col">
+        <div class="brand-name">Terra<span>Sentinel</span></div>
+        <div class="brand-tag">NER LANDSLIDE WATCH</div>
+      </div>
+    </div>
+
+    <div class="user-profile-badge" onclick="openProfileModal()">
+      <div class="user-avatar-mini" id="avatarInitial">T</div>
+      <div class="user-profile-name" id="headerUserName">Citizen</div>
+    </div>
+  </header>
+
+
+  <!-- ================= CONTENT VIEWS ================= -->
+  <div class="content-area">
+
+    <!-- TAB 1: SUSCEPTIBILITY RATE (CITIZEN HOME) -->
+    <div class="tab-view active" id="tabRate">
+
+      <!-- Hero Header matching photo style -->
+      <div class="hero-banner">
+        <div class="hero-meta-tag">SMART INDIA HACKATHON • 8 NER STATES</div>
+        <h1 class="hero-heading">
+          Landslide risk for the North-East, <br />
+          <span>before the slope moves.</span>
+        </h1>
+        <p class="hero-desc">
+          TerraSentinel scores terrain, soil saturation, and IMD precipitation to estimate slope-failure susceptibility across critical NER corridors.
+        </p>
+      </div>
+
+      <!-- Quick Geological Indicators (from Photo 2) -->
+      <div class="stat-strip">
+        <div class="stat-card">
+          <div class="stat-label">Corridors Scored</div>
+          <div class="stat-value">5</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Critical Now</div>
+          <div class="stat-value highlight-amber" id="criticalSitesCount">1</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Peak Score</div>
+          <div class="stat-value highlight-red" id="peakScoreVal">91<span style="font-size:11px; font-weight:normal; color:#94A3B8;">/100</span></div>
+        </div>
+      </div>
+
+      <!-- Route Selector Pills -->
+      <div style="padding: 10px 14px 4px;">
+        <div style="font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px;">Select Corridor / Highway to Monitor:</div>
+      </div>
+      <div class="pills-scroll">
+        <div class="route-pill active" onclick="selectRegion(0, this)">Teesta Valley (NH-10)</div>
+        <div class="route-pill" onclick="selectRegion(1, this)">Shillong Bypass (NH-6)</div>
+        <div class="route-pill" onclick="selectRegion(2, this)">West Siang (NH-13)</div>
+        <div class="route-pill" onclick="selectRegion(3, this)">Silchar Hill Cut (SH-11)</div>
+        <div class="route-pill" onclick="selectRegion(4, this)">Champhai Border Pass</div>
+      </div>
+
+      <!-- Landslide Susceptibility Rate Meter -->
+      <div class="geo-card" style="padding-top:18px;">
+        <div class="meter-container">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:11.5px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.4px;">Current Slope Susceptibility</span>
+            <span class="meter-status-badge status-high" id="rateBadge">HIGH RISK</span>
+          </div>
+
+          <div class="meter-circle" id="rateCircle">
+            <div class="meter-rate" id="ratePercent">78%</div>
+            <div class="meter-sub">Failure Probability</div>
+          </div>
+
+          <div style="font-size:15px; font-weight:800; color:var(--ochre-amber);" id="rateStatusTitle">HIGH LANDSLIDE VULNERABILITY</div>
+          <div style="font-size:12px; color:var(--text-muted); margin-top:2px;" id="regionFullName">Teesta Valley Corridor (NH-10), Sikkim</div>
+
+          <!-- Progress Scale -->
+          <div class="meter-progress-track">
+            <div class="meter-progress-bar" id="rateProgressBar" style="width: 78%; background: var(--ochre-amber);"></div>
+          </div>
+          <div class="meter-scale-text">
+            <span>0% Stable</span>
+            <span>50% Caution</span>
+            <span>100% Imminent Failure</span>
+          </div>
+        </div>
+
+        <!-- Environmental Telemetry Grid -->
+        <div class="telemetry-grid">
+          <div class="telemetry-item">
+            <div class="telemetry-label">24h IMD Precipitation</div>
+            <div class="telemetry-val" id="telRain">142.5 mm</div>
+            <div class="telemetry-tag" style="color:var(--ochre-amber);">Sustained pulse</div>
+          </div>
+          <div class="telemetry-item">
+            <div class="telemetry-label">Soil Pore Water Saturation</div>
+            <div class="telemetry-val" id="telSoil">89.2 %</div>
+            <div class="telemetry-tag" style="color:var(--terra-red);">Reduced shear strength</div>
+          </div>
+        </div>
+
+        <!-- Safety Advisory for Travelers -->
+        <div class="advisory-box" id="advisoryText">
+          ⚠️ <strong>Travel Advisory:</strong> High soil saturation combined with steep cuts. Exercise extreme caution on NH-10. Avoid night driving during ongoing rainfall.
+        </div>
+      </div>
+
+    </div>
+
+
+    <!-- TAB 2: GEOLOGICAL HAZARD MAP -->
+    <div class="tab-view" id="tabMap">
+      <div style="padding:10px 14px; background:var(--surface-card); border-bottom:1px solid var(--border-earth); display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <div style="font-size:13px; font-weight:800; color:#FFFFFF;">North-East India Hazard Corridors</div>
+          <div style="font-size:10.5px; color:var(--text-muted);">GSI Bhusanket Field Inventory & Active Sentinel Points</div>
+        </div>
+        <button style="background:var(--surface-panel); border:1px solid var(--border-earth); color:var(--sky-blue); font-size:11px; padding:5px 10px; border-radius:8px; font-weight:700;" onclick="centerMapOnUser()">📍 My GPS</button>
+      </div>
+      <div id="map"></div>
+    </div>
+
+
+    <!-- TAB 3: OFFICIAL DISASTER BULLETINS (NO SIRENS) -->
+    <div class="tab-view" id="tabAlerts">
+      <div style="padding:16px 14px 8px;">
+        <div style="font-size:17px; font-weight:900; color:#FFFFFF;">Official Disaster Bulletins</div>
+        <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">Published by District EOC & State Disaster Management Authorities</div>
+      </div>
+
+      <!-- Alert 1 -->
+      <div class="geo-card" style="border-left: 4px solid var(--terra-red); margin-top:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <span class="meter-status-badge status-critical">CRITICAL DANGER</span>
+          <span style="font-size:11px; color:var(--text-muted);">Shillong, Meghalaya</span>
+        </div>
+        <div style="font-size:14.5px; font-weight:800; color:#FFFFFF; margin-bottom:6px;">Imminent Slope Failure on Shillong Bypass (NH-6)</div>
+        <p style="font-size:12.5px; color:#CBD5E1; line-height:1.45; margin-bottom:10px;">
+          Severe topsoil saturation exceeding 96% after 210mm continuous rainfall. Traffic diversion in effect via old highway route. Follow administrative safety guidelines.
+        </p>
+        <div style="font-size:10.5px; color:var(--text-dim); border-top:1px solid var(--border-subtle); padding-top:8px;">
+          Source: Meghalaya State Disaster Management Authority • Today, 11:30 AM
+        </div>
+      </div>
+
+      <!-- Alert 2 -->
+      <div class="geo-card" style="border-left: 4px solid var(--ochre-amber);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <span class="meter-status-badge status-high">HIGH WARNING</span>
+          <span style="font-size:11px; color:var(--text-muted);">West Siang, Arunachal</span>
+        </div>
+        <div style="font-size:14.5px; font-weight:800; color:#FFFFFF; margin-bottom:6px;">Active Hillside Debris Flow near NH-13 Km 42</div>
+        <p style="font-size:12.5px; color:#CBD5E1; line-height:1.45; margin-bottom:10px;">
+          Hill cutting movement reported after overnight cloudburst. Border Roads Organisation (BRO) bulldozers mobilized on standby.
+        </p>
+        <div style="font-size:10.5px; color:var(--text-dim); border-top:1px solid var(--border-subtle); padding-top:8px;">
+          Source: District Emergency Operations Centre • Today, 09:15 AM
+        </div>
+      </div>
+
+      <!-- Alert 3 -->
+      <div class="geo-card" style="border-left: 4px solid var(--ochre-amber);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <span class="meter-status-badge status-moderate">CAUTION ADVISORY</span>
+          <span style="font-size:11px; color:var(--text-muted);">Gangtok, Sikkim</span>
+        </div>
+        <div style="font-size:14.5px; font-weight:800; color:#FFFFFF; margin-bottom:6px;">Monsoon Infiltration Advisory across Teesta River Basin</div>
+        <p style="font-size:12.5px; color:#CBD5E1; line-height:1.45; margin-bottom:10px;">
+          Continuous precipitation forecasted over next 36 hours. Mountain commuters are advised to inspect local highway status before traveling.
+        </p>
+        <div style="font-size:10.5px; color:var(--text-dim); border-top:1px solid var(--border-subtle); padding-top:8px;">
+          Source: IMD & Sikkim Disaster Management • Yesterday
+        </div>
+      </div>
+    </div>
+
+
+    <!-- TAB 4: CITIZEN FIELD INCIDENT REPORT -->
+    <div class="tab-view" id="tabReport">
+      <div class="geo-card" style="margin-top:16px;">
+        <div style="font-size:16px; font-weight:800; color:#FFFFFF; margin-bottom:2px;">Citizen Ground Truth Report</div>
+        <div style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">Report hillside slips, falling stones, or road cuts to assist control rooms.</div>
+
+        <div style="background:#09101F; padding:10px 12px; border-radius:10px; border:1px solid var(--border-earth); margin-bottom:14px; display:flex; align-items:center; gap:10px;">
+          <span style="font-size:20px;">📍</span>
+          <div>
+            <div style="font-size:10.5px; color:var(--text-dim); font-weight:700; text-transform:uppercase;">Auto-Locked GPS Location:</div>
+            <div style="font-size:12.5px; font-weight:700; color:#FFFFFF;" id="gpsDisplay">27.3312° N, 88.6134° E (East Sikkim)</div>
+          </div>
+        </div>
+
+        <label class="form-label">Type of Observation</label>
+        <select class="form-field" id="citizenObsType">
+          <option>Landslide blocking road / highway</option>
+          <option>Falling boulders / rockfall</option>
+          <option>New ground cracks along hillside or road</option>
+          <option>Mudflow / excessive saturated runoff</option>
+          <option>Retaining wall failure / tilting poles</option>
+        </select>
+
+        <label class="form-label">Road Transit Impact</label>
+        <select class="form-field" id="citizenObsImpact">
+          <option>Road completely blocked (No traffic)</option>
+          <option>Single lane blocked (Passable with caution)</option>
+          <option>Minor debris on roadside (Passable)</option>
+        </select>
+
+        <label class="form-label">Landmark / Milestone Details</label>
+        <textarea class="form-field" id="citizenObsNotes" style="height:74px;" placeholder="e.g. Km 14 near bridge, 500m past checkpost..."></textarea>
+
+        <button class="btn-action-primary" onclick="submitCitizenObservation()">SUBMIT TO DISTRICT EOC</button>
+      </div>
+    </div>
+
+  </div>
+
+
+  <!-- ================= BOTTOM NAVIGATION ================= -->
+  <div class="bottom-nav">
+    <button class="nav-tab-btn active" onclick="switchTab('tabRate', this)">
+      <span class="nav-icon">📊</span>
+      <span>Risk Rate</span>
+    </button>
+    <button class="nav-tab-btn" onclick="switchTab('tabMap', this)">
+      <span class="nav-icon">🗺️</span>
+      <span>Corridor Map</span>
+    </button>
+    
+    <!-- Central Emergency SOS Trigger -->
+    <button class="sos-central-btn" onclick="openSosModal()">
+      <span>🚨</span>
+      <span>SOS</span>
+    </button>
+
+    <button class="nav-tab-btn" onclick="switchTab('tabAlerts', this)">
+      <span class="nav-icon">🔔</span>
+      <span>Bulletins</span>
+    </button>
+    <button class="nav-tab-btn" onclick="switchTab('tabReport', this)">
+      <span class="nav-icon">📝</span>
+      <span>Report</span>
+    </button>
+  </div>
+
+
+  <!-- ================= EMERGENCY SOS DISPATCH MODAL ================= -->
+  <div class="modal-backdrop" id="sosModal">
+    <div class="modal-content-box">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <div style="font-size:15px; font-weight:900; color:var(--terra-red); display:flex; align-items:center; gap:6px;">
+          <span>🚨</span> EMERGENCY FIRST RESPONDER SOS
+        </div>
+        <button onclick="closeSosModal()" style="background:none; border:none; color:var(--text-muted); font-size:18px; cursor:pointer;">✕</button>
+      </div>
+
+      <p style="font-size:12px; color:#CBD5E1; line-height:1.45; margin-bottom:12px;">
+        Instantly alert all district emergency rescue teams with your precise GPS coordinates (27.33° N, 88.61° E).
+      </p>
+
+      <button class="sos-dispatch-banner-btn" onclick="triggerSosBroadcast()">DISPATCH POLICE, FIRE & AMBULANCE</button>
+
+      <div style="font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; margin-bottom:8px;">Direct Toll-Free Emergency Hotlines:</div>
+
+      <a href="tel:112" class="sos-call-btn">
+        <span style="color:#38BDF8;">🚔 Police Control Room</span>
+        <span style="font-weight:900; color:#38BDF8;">112</span>
+      </a>
+      <a href="tel:101" class="sos-call-btn">
+        <span style="color:#EF4444;">🚒 Fire & Emergency Rescue</span>
+        <span style="font-weight:900; color:#EF4444;">101</span>
+      </a>
+      <a href="tel:108" class="sos-call-btn">
+        <span style="color:#10B981;">🚑 Disaster Medical / Ambulance</span>
+        <span style="font-weight:900; color:#10B981;">108</span>
+      </a>
+      <a href="tel:1070" class="sos-call-btn">
+        <span style="color:#F59E0B;">🏛️ State Disaster Management EOC</span>
+        <span style="font-weight:900; color:#F59E0B;">1070</span>
+      </a>
+    </div>
+  </div>
+
+
+  <!-- ================= USER PROFILE MODAL ================= -->
+  <div class="modal-backdrop" id="profileModal">
+    <div class="modal-content-box">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <div style="font-size:15px; font-weight:800; color:#FFFFFF;">Registered Citizen Profile</div>
+        <button onclick="closeProfileModal()" style="background:none; border:none; color:var(--text-muted); font-size:18px; cursor:pointer;">✕</button>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:12px; background:#09101F; padding:12px; border-radius:12px; border:1px solid var(--border-earth); margin-bottom:14px;">
+        <div class="user-avatar-mini" id="profileAvatarBig" style="width:42px; height:42px; font-size:18px;">T</div>
+        <div>
+          <div style="font-size:15px; font-weight:800; color:#FFFFFF;" id="profName">Tenzing Norbu</div>
+          <div style="font-size:12px; color:var(--sky-blue);" id="profPhone">+91 9876543210</div>
+        </div>
+      </div>
+
+      <div style="font-size:12px; color:#CBD5E1; margin-bottom:8px;"><strong>Age & Gender:</strong> <span id="profAgeGender">28 Years • Male</span></div>
+      <div style="font-size:12px; color:#CBD5E1; margin-bottom:16px;"><strong>Registered Location:</strong> <span id="profLocation">Gangtok, Sikkim</span></div>
+
+      <button style="background:#B91C1C; color:white; border:none; padding:12px; border-radius:10px; width:100%; font-weight:700; font-size:13px; cursor:pointer;" onclick="signOutUser()">SIGN OUT</button>
+    </div>
+  </div>
+
+
+  <!-- ================= LOGIC & INTERACTIONS ================= -->
+  <script>
+    // NER Corridors Data (Derived from GSI inventory & XGBoost model)
+    const CORRIDORS = [
+      {
+        name: "Teesta Valley (NH-10)",
+        state: "Sikkim",
+        district: "East Sikkim",
+        rate: 78,
+        level: "HIGH RISK",
+        statusClass: "status-high",
+        color: "#F59E0B",
+        rain: "142.5 mm",
+        soil: "89.2 %",
+        advisory: "⚠️ Travel Advisory: High soil saturation combined with steep cuts. Exercise extreme caution on NH-10. Avoid night driving during ongoing rainfall."
+      },
+      {
+        name: "Shillong Bypass (NH-6)",
+        state: "Meghalaya",
+        district: "East Khasi Hills",
+        rate: 91,
+        level: "CRITICAL DANGER",
+        statusClass: "status-critical",
+        color: "#EF4444",
+        rain: "210.4 mm",
+        soil: "96.4 %",
+        advisory: "🛑 Critical Warning: Imminent slope collapse near Shillong bypass. Active rockfall reported. Follow administrative road closures and diversions."
+      },
+      {
+        name: "West Siang Along (NH-13)",
+        state: "Arunachal Pradesh",
+        district: "West Siang",
+        rate: 68,
+        level: "ELEVATED CAUTION",
+        statusClass: "status-high",
+        color: "#F59E0B",
+        rain: "98.0 mm",
+        soil: "74.1 %",
+        advisory: "⚠️ Elevated Caution: Hill cutting debris flows possible on unpaved curves. Maintain emergency contacts (112, 1070) on speed dial."
+      },
+      {
+        name: "Silchar Hill Cut (SH-11)",
+        state: "Assam",
+        district: "Cachar",
+        rate: 42,
+        level: "MODERATE RISK",
+        statusClass: "status-moderate",
+        color: "#EAB308",
+        rain: "45.0 mm",
+        soil: "56.0 %",
+        advisory: "ℹ️ Normal Traffic: Low to moderate saturation. Watch for minor gravel washouts on sharp hairpin curves following localized rain."
+      },
+      {
+        name: "Champhai Border Pass",
+        state: "Mizoram",
+        district: "Champhai",
+        rate: 22,
+        level: "LOW / STABLE",
+        statusClass: "status-safe",
+        color: "#10B981",
+        rain: "12.0 mm",
+        soil: "38.5 %",
+        advisory: "✅ Stable Conditions: Dry stable bedrock slope. No active landslide warnings in effect across this corridor."
+      }
+    ];
+
+    const DISTRICTS_MAP = {
+      "Sikkim": ["East Sikkim (Gangtok)", "West Sikkim (Geyzing)", "North Sikkim (Mangan)", "South Sikkim (Namchi)"],
+      "Meghalaya": ["East Khasi Hills (Shillong)", "West Khasi Hills", "Ri-Bhoi", "West Garo Hills", "East Jaintia Hills"],
+      "Arunachal Pradesh": ["West Siang (Along)", "Tawang", "Papum Pare (Itanagar)", "East Siang (Pasighat)", "Lower Subansiri"],
+      "Assam": ["Cachar (Silchar)", "Kamrup Metro (Guwahati)", "Dima Hasao", "Karbi Anglong", "Dibrugarh"],
+      "Mizoram": ["Aizawl", "Champhai", "Lunglei", "Kolasib", "Serchhip"],
+      "Nagaland": ["Kohima", "Dimapur", "Mokokchung", "Wokha", "Phek"],
+      "Manipur": ["Imphal East", "Imphal West", "Churachandpur", "Ukhrul", "Senapati"],
+      "Tripura": ["West Tripura (Agartala)", "North Tripura", "South Tripura", "Dhalai"]
+    };
+
+    let selectedGender = "Male";
+
+    function setGender(gender, element) {
+      selectedGender = gender;
+      document.querySelectorAll('.gender-pill-btn').forEach(b => b.classList.remove('active'));
+      element.classList.add('active');
+    }
+
+    function updateDistricts() {
+      const state = document.getElementById('inpState').value;
+      const districtSelect = document.getElementById('inpDistrict');
+      districtSelect.innerHTML = "";
+      const list = DISTRICTS_MAP[state] || ["District 1"];
+      list.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d;
+        opt.innerText = d;
+        districtSelect.appendChild(opt);
+      });
+    }
+
+    // --- Authentication Flow with Strict Age Validation ---
+    function sendOtp() {
+      const phone = document.getElementById('inpPhone').value.trim();
+      const name = document.getElementById('inpName').value.trim();
+      const ageStr = document.getElementById('inpAge').value.trim();
+
+      if (phone.length !== 10) {
+        alert("Please enter a valid 10-digit mobile phone number.");
+        return;
+      }
+      if (!name) {
+        alert("Please enter your full name.");
+        return;
+      }
+
+      // Age format check: Strictly positive numbers between 1 and 110
+      const ageNum = parseInt(ageStr, 10);
+      if (!ageStr || isNaN(ageNum) || ageNum < 1 || ageNum > 110) {
+        alert("Please enter a valid age between 1 and 110 years (negative numbers or zero are not allowed).");
+        return;
+      }
+
+      document.getElementById('displayPhone').innerText = "+91 " + phone;
+      document.getElementById('authStep1').style.display = 'none';
+      document.getElementById('authStep2').style.display = 'block';
+    }
+
+    function resendOtp() {
+      alert("A new verification code (4821) has been sent to your mobile phone.");
+    }
+
+    function completeSignIn() {
+      const phone = document.getElementById('inpPhone').value.trim();
+      const name = document.getElementById('inpName').value.trim();
+      const age = parseInt(document.getElementById('inpAge').value.trim(), 10);
+      const state = document.getElementById('inpState').value;
+      const district = document.getElementById('inpDistrict').value;
+
+      const user = {
+        name: name,
+        phone: "+91 " + phone,
+        age: age,
+        gender: selectedGender,
+        state: state,
+        district: district
+      };
+
+      localStorage.setItem('terrasentinel_citizen_user', JSON.stringify(user));
+      applyUser(user);
+      document.getElementById('authScreen').classList.add('hidden');
+    }
+
+    function applyUser(user) {
+      document.getElementById('headerUserName').innerText = user.name.split(' ')[0];
+      document.getElementById('avatarInitial').innerText = user.name.charAt(0).toUpperCase();
+
+      // Profile Modal
+      document.getElementById('profName').innerText = user.name;
+      document.getElementById('profPhone').innerText = user.phone;
+      document.getElementById('profileAvatarBig').innerText = user.name.charAt(0).toUpperCase();
+      document.getElementById('profAgeGender').innerText = user.age + " Years • " + user.gender;
+      document.getElementById('profLocation').innerText = user.district + ", " + user.state;
+    }
+
+    function signOutUser() {
+      localStorage.removeItem('terrasentinel_citizen_user');
+      closeProfileModal();
+      document.getElementById('authStep1').style.display = 'block';
+      document.getElementById('authStep2').style.display = 'none';
+      document.getElementById('authScreen').classList.remove('hidden');
+    }
+
+    function checkAuth() {
+      const stored = localStorage.getItem('terrasentinel_citizen_user');
+      if (stored) {
+        try {
+          const user = JSON.parse(stored);
+          applyUser(user);
+          document.getElementById('authScreen').classList.add('hidden');
+        } catch(e) {
+          document.getElementById('authScreen').classList.remove('hidden');
+        }
+      } else {
+        document.getElementById('authScreen').classList.remove('hidden');
+      }
+    }
+
+    // --- Select Corridor & Update Susceptibility Rate ---
+    function selectRegion(index, pill) {
+      document.querySelectorAll('.route-pill').forEach(p => p.classList.remove('active'));
+      if (pill) pill.classList.add('active');
+
+      const c = CORRIDORS[index];
+      document.getElementById('ratePercent').innerText = c.rate + "%";
+      document.getElementById('rateStatusTitle').innerText = c.level;
+      document.getElementById('rateStatusTitle').style.color = c.color;
+      document.getElementById('regionFullName').innerText = c.name + ", " + c.state;
+
+      const circle = document.getElementById('rateCircle');
+      circle.style.borderColor = c.color;
+      circle.style.background = `radial-gradient(circle, ${c.color}20 0%, rgba(10, 18, 32, 0.8) 70%)`;
+
+      const bar = document.getElementById('rateProgressBar');
+      bar.style.width = c.rate + "%";
+      bar.style.background = c.color;
+
+      const badge = document.getElementById('rateBadge');
+      badge.innerText = c.level;
+      badge.className = "meter-status-badge " + c.statusClass;
+
+      document.getElementById('telRain').innerText = c.rain;
+      document.getElementById('telSoil').innerText = c.soil;
+      document.getElementById('advisoryText').innerText = c.advisory;
+    }
+
+    // --- Tab Switching ---
+    function switchTab(tabId, button) {
+      document.querySelectorAll('.tab-view').forEach(v => v.classList.remove('active'));
+      document.querySelectorAll('.nav-tab-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById(tabId).classList.add('active');
+      if (button) button.classList.add('active');
+      if (tabId === 'tabMap') map.invalidateSize();
+    }
+
+    // --- Modals ---
+    function openSosModal() { document.getElementById('sosModal').classList.add('active'); }
+    function closeSosModal() { document.getElementById('sosModal').classList.remove('active'); }
+    function openProfileModal() { document.getElementById('profileModal').classList.add('active'); }
+    function closeProfileModal() { document.getElementById('profileModal').classList.remove('active'); }
+
+    function triggerSosBroadcast() {
+      alert("🚨 EMERGENCY FIRST RESPONDER SOS DISPATCHED!\n\nLocked Coordinates: 27.3312° N, 88.6134° E\nAlert broadcast transmitted to:\n- Police Control Room (112)\n- Fire & Emergency Rescue (101)\n- Medical Trauma & Ambulance (108)\n- State Disaster Management EOC (1070)\n\nFirst responders have been notified with your location.");
+      closeSosModal();
+    }
+
+    function submitCitizenObservation() {
+      const type = document.getElementById('citizenObsType').value;
+      const notes = document.getElementById('citizenObsNotes').value;
+      alert("Thank you! Your observation has been logged and forwarded to the District Disaster Management Authority (DDMA) control room.");
+      document.getElementById('citizenObsNotes').value = "";
+      switchTab('tabRate', document.querySelector('.nav-tab-btn'));
+    }
+
+    // --- Leaflet Tactical Hazard Map Init ---
+    const map = L.map('map', { zoomControl: false }).setView([26.50, 91.50], 7);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
+
+    const mapPoints = [
+      { name: "Teesta Valley (NH-10)", lat: 27.33, lon: 88.61, rate: 78, level: "HIGH RISK", color: "#F59E0B" },
+      { name: "Shillong Bypass (NH-6)", lat: 25.57, lon: 91.88, rate: 91, level: "CRITICAL DANGER", color: "#EF4444" },
+      { name: "West Siang Ridge (NH-13)", lat: 27.10, lon: 92.00, rate: 68, level: "ELEVATED CAUTION", color: "#F59E0B" },
+      { name: "Silchar Hill Cut (SH-11)", lat: 24.82, lon: 92.79, rate: 42, level: "MODERATE RISK", color: "#EAB308" },
+      { name: "Champhai Border Pass", lat: 23.45, lon: 93.32, rate: 22, level: "LOW / STABLE", color: "#10B981" }
+    ];
+
+    mapPoints.forEach(p => {
+      const circle = L.circleMarker([p.lat, p.lon], {
+        radius: p.rate >= 75 ? 13 : 9,
+        fillColor: p.color,
+        color: '#FFFFFF',
+        weight: 2,
+        fillOpacity: 0.9
+      }).addTo(map);
+
+      circle.bindPopup("<b>" + p.name + "</b><br>Susceptibility Rate: <b>" + p.rate + "%</b><br>Status: " + p.level);
+    });
+
+    function centerMapOnUser() {
+      map.setView([27.33, 88.61], 10);
+    }
+
+    // Initialize
+    updateDistricts();
+    checkAuth();
+  </script>
+</body>
+</html>

@@ -20,3 +20,21 @@ data/processed/*
 # Ignore unneeded frontend experiment directory
 frontend_2/
 
+# Dependencies and build artifacts
+node_modules/
+dist/
+build/
+.expo/
+.cache/
+
+# Python caches
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

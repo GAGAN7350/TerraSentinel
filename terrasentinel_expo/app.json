@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "TerraSentinel",
+    "slug": "terrasentinel-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#070B14",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.terrasentinel.ner",
+      "adaptiveIcon": {
+        "backgroundColor": "#070B14"
+      },
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "extra": {
+      "eas": {
+        "projectId": "94dc0e34-1166-4840-a4c4-1cc6c13a6e61"
+      }
+    }
+  }
+}
